@@ -179,7 +179,7 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 
 ## Ícono
 
-Cuatro opciones sobre la misma idea, un amanecer en la ciudad. La app usa la **2 (Despertador)**.
+Cuatro opciones sobre la misma idea, un amanecer en la ciudad. La app usa la **1 (Horizonte)**.
 
 ![Las cuatro opciones del ícono](design/icons/preview.png)
 
