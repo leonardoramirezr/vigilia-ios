@@ -6,7 +6,7 @@ Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de 
 - 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 30 sonidos sintetizados desde cero y no se repite ninguno hasta haberlos usado todos.
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
 - 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien. Tú eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
-- 📈 **Estadísticas de tus despertares:** hora promedio y gráfica de cómo ha cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
+- 📈 **Estadísticas de tus despertares:** a qué hora sonó la alarma, a qué hora la apagaste y cuánto tardaste, con promedio, percentiles y gráficas de cómo han cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
 
 Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`, igual que la plantilla original) de dos formas: en **GitHub Actions** (sin Mac) o con un **script local**.
 
@@ -58,13 +58,22 @@ En **Estadísticas** (pantalla principal) eliges tres cosas, independientes entr
 
 | Opción | Valores |
 |---|---|
-| Estadística | **Hora promedio** de despertar, o **gráfica de línea** de cómo ha cambiado |
+| Estadística | **Resumen** (promedio y percentiles) o **gráficas** de cómo han cambiado |
 | Por | **Día de la semana** (un promedio o una línea por día) o **toda la semana** |
 | Contando | **Siempre**, **1 año**, **1 mes** o **1 semana** (hacia atrás desde hoy) |
 
-- La hora de despertar es la hora a la que **apagaste la alarma completando el reto**. Las pruebas no cuentan.
-- El promedio maneja bien la medianoche: 23:50 y 0:10 dan 0:00, no mediodía.
-- La gráfica muestra cada despertar en periodos cortos y promedios semanales o mensuales en periodos largos. Mantén el dedo sobre ella para ver cada valor; «Ver datos» muestra la tabla.
+- Cada despertar tiene tres datos:
+  - **Hora en que sonó:** la primera vez que sonó la alarma, sin contar cuando vuelve a sonar.
+  - **Hora en que la apagaste:** cuando completaste el reto.
+  - **Tiempo en apagarla:** desde que sonó por primera vez hasta que completaste el reto.
+- Las pruebas no cuentan.
+- El **resumen** muestra cuántos despertares hay y, para cada dato, el promedio y tres percentiles, cada uno con su explicación en la pantalla:
+  - **Percentil 10:** 1 de cada 10 días fue a esa hora o antes (o tardaste ese tiempo o menos).
+  - **Percentil 50 (mediana):** la mitad de los días.
+  - **Percentil 90:** 9 de cada 10 días.
+- Por día de la semana, cada día muestra los tres promedios; tócalo para ver sus percentiles.
+- Las horas manejan bien la medianoche: 23:50 y 0:10 dan 0:00, no mediodía.
+- **Gráficas:** una por dato. Muestran cada despertar en periodos cortos y promedios semanales o mensuales en periodos largos. Mantén el dedo sobre una para ver cada valor; «Ver datos» muestra la tabla con los tres datos.
 - Se guardan unos 10 años de despertares (antes solo se guardaban los últimos 30).
 
 ### Botón «Probar»

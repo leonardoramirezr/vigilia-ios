@@ -367,22 +367,34 @@ struct LogicTests {
             value.map { abs($0 - expected) < 0.01 } ?? false
         }
 
-        expect(close(WakeStatistics.summary(of: [360, 360, 540])?.average, 420), "close times average as plain numbers")
-        let midnight = WakeStatistics.summary(of: [1430, 10])?.average
+        expect(close(WakeStatistics.summary(ofTimes: [360, 360, 540])?.average, 420), "close times average as plain numbers")
+        let midnight = WakeStatistics.summary(ofTimes: [1430, 10])?.average
         expect(close(midnight, 0) || close(midnight, 1440), "23:50 and 0:10 average to midnight, not noon")
-        let late = WakeStatistics.summary(of: [1430, 10, 20])
+        let late = WakeStatistics.summary(ofTimes: [1430, 10, 20])
         expect(close(late?.average, 20.0 / 3), "the average works across midnight")
-        expect(close(late?.earliest, 1430) && close(late?.latest, 20), "earliest and latest work across midnight")
-        expect(WakeStatistics.summary(of: []) == nil, "no wake-ups, no average")
+        // In order: 23:50, 0:10, 0:20.
+        expect(close(late?.p10, 1434) && close(late?.p50, 10) && close(late?.p90, 18),
+               "percentiles work across midnight (got \(String(describing: late)))")
+        expect(WakeStatistics.summary(ofTimes: []) == nil && WakeStatistics.summary(ofDurations: []) == nil, "no wake-ups, no average")
 
-        // 100 days of 7:00 alarms, ending on Friday 2026-10-09: turned off at 7:05 on
-        // weekdays and at 8:30 on weekends. Plus a test, which never counts.
+        let durations = WakeStatistics.summary(ofDurations: [7, 3, 10, 1, 5, 9, 2, 8, 4, 6])
+        expect(close(durations?.average, 5.5) && durations?.count == 10, "durations average as plain numbers")
+        expect(close(durations?.p10, 1.9) && close(durations?.p50, 5.5) && close(durations?.p90, 9.1),
+               "percentiles interpolate between the nearest values (got \(String(describing: durations)))")
+        let lone = WakeStatistics.summary(ofDurations: [3])
+        expect(lone == WakeSummary(average: 3, p10: 3, p50: 3, p90: 3, count: 1), "a single value is every percentile")
+        expect(close(WakeStatistics.summary(ofDurations: [10, 800])?.average, 405), "durations never wrap around midnight")
+
+        // 100 days ending on Friday 2026-10-09: on weekdays the alarm rings at 7:00 and
+        // is turned off at 7:05; on weekends it rings at 8:00 and is turned off at 8:30.
+        // Plus a test, which never counts.
         let now = date("2026-10-09T12:00:00")
         var history: [WakeRecord] = []
         for back in 0..<100 {
-            let occurrence = calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T07:00:00"))!
-            let weekend = [1, 7].contains(calendar.component(.weekday, from: occurrence))
-            history.append(WakeRecord(occurrence: occurrence, completedAt: occurrence.addingTimeInterval(weekend ? 90 * 60 : 5 * 60),
+            let day = calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T07:00:00"))!
+            let weekend = [1, 7].contains(calendar.component(.weekday, from: day))
+            let occurrence = weekend ? day.addingTimeInterval(3600) : day
+            history.append(WakeRecord(occurrence: occurrence, completedAt: occurrence.addingTimeInterval(weekend ? 30 * 60 : 5 * 60),
                                       solved: 10, mistakes: 1, isTest: false))
         }
         history.append(WakeRecord(occurrence: date("2026-10-08T15:00:00"), completedAt: date("2026-10-08T15:02:00"),
@@ -394,53 +406,94 @@ struct LogicTests {
         expect(samples(.week).count == 7, "a week counts 7 wake-ups (got \(samples(.week).count))")
         expect(samples(.month).count == 30, "a month counts 30 wake-ups (got \(samples(.month).count))")
         expect(samples(.year).count == 100 && samples(.always).count == 100, "a year and always count everything")
-        expect(samples(.always).allSatisfy { $0.minuteOfDay == 425 || $0.minuteOfDay == 510 }, "the wake-up time is when the alarm was turned off")
+        expect(samples(.always).allSatisfy { sample in
+            [1, 7].contains(sample.weekday)
+                ? sample.alarmMinute == 480 && sample.offMinute == 510 && close(sample.minutesToOff, 30)
+                : sample.alarmMinute == 420 && sample.offMinute == 425 && close(sample.minutesToOff, 5)
+        }, "each wake-up keeps when the alarm rang, when it was turned off and how long that took")
 
-        let week = WakeStatistics.summary(of: samples(.week).map(\.minuteOfDay))
-        expect(close(week?.average, (5 * 425 + 2 * 510) / 7.0), "whole-week average")
-        expect(week?.count == 7 && close(week?.earliest, 425) && close(week?.latest, 510), "whole-week spread")
+        let week = samples(.week)
+        let alarmWeek = WakeStatistics.summary(of: week, .alarmTime)
+        expect(close(alarmWeek?.average, (5 * 420 + 2 * 480) / 7.0) && alarmWeek?.count == 7, "whole-week alarm time")
+        let offWeek = WakeStatistics.summary(of: week, .offTime)
+        expect(close(offWeek?.average, (5 * 425 + 2 * 510) / 7.0), "whole-week time turned off")
+        expect(close(offWeek?.p10, 425) && close(offWeek?.p50, 425) && close(offWeek?.p90, 510), "whole-week percentiles")
+        let delayWeek = WakeStatistics.summary(of: week, .timeToOff)
+        expect(close(delayWeek?.average, (5 * 5 + 2 * 30) / 7.0) && close(delayWeek?.p50, 5) && close(delayWeek?.p90, 30),
+               "whole-week time to turn it off")
 
-        let byDay = WakeStatistics.summaryByWeekday(samples(.always))
+        let byDay = WakeStatistics.summaryByWeekday(samples(.always), .offTime)
         expect(byDay.count == 7, "every weekday has an average")
         expect((2...6).allSatisfy { close(byDay[$0]?.average, 425) }, "weekday average")
         expect(close(byDay[1]?.average, 510) && close(byDay[7]?.average, 510), "weekend average")
         expect(byDay.values.reduce(0) { $0 + $1.count } == 100, "every wake-up belongs to one weekday")
+        let delayByDay = WakeStatistics.summaryByWeekday(samples(.always), .timeToOff)
+        expect((2...6).allSatisfy { close(delayByDay[$0]?.p90, 5) } && close(delayByDay[1]?.p10, 30), "weekday percentiles")
+        let alarmByDay = WakeStatistics.summaryByWeekday(samples(.always), .alarmTime)
+        expect(close(alarmByDay[2]?.average, 420) && close(alarmByDay[7]?.average, 480), "weekday alarm times")
 
-        let daily = WakeStatistics.trend(of: samples(.month), grouping: .wholeWeek, calendar: calendar)
-        expect(daily.resolution == .day && daily.points.count == 30, "a month shows every wake-up")
-        expect(zip(daily.points, daily.points.dropFirst()).allSatisfy { $0.date < $1.date }, "points are in order")
+        // Past midnight: the alarm rang at 23:55 and was turned off at 0:05.
+        let lateNight = WakeStatistics.samples(
+            from: [WakeRecord(occurrence: date("2026-10-08T23:55:00"), completedAt: date("2026-10-09T00:05:00"),
+                              solved: 10, mistakes: 0, isTest: false),
+                   // Turned off a few seconds before the scheduled time.
+                   WakeRecord(occurrence: date("2026-10-07T07:00:00"), completedAt: date("2026-10-07T06:59:50"),
+                              solved: 10, mistakes: 0, isTest: false)],
+            period: .always, now: now, calendar: calendar)
+        expect(lateNight.count == 2 && lateNight[1].alarmMinute == 1435 && lateNight[1].offMinute == 5
+               && close(lateNight[1].minutesToOff, 10), "a wake-up past midnight")
+        expect(lateNight.first?.minutesToOff == 0, "the time to turn it off is never negative")
 
-        let weekly = WakeStatistics.trend(of: samples(.always), grouping: .wholeWeek, calendar: calendar)
+        for measure in WakeMeasure.allCases {
+            let daily = WakeStatistics.trend(of: samples(.month), measure, grouping: .wholeWeek, calendar: calendar)
+            expect(daily.resolution == .day && daily.points.count == 30, "a month shows every wake-up (\(measure))")
+            expect(zip(daily.points, daily.points.dropFirst()).allSatisfy { $0.date < $1.date }, "points are in order (\(measure))")
+        }
+        let alarmPoints = WakeStatistics.trend(of: samples(.always), .alarmTime, grouping: .byWeekday, calendar: calendar).points
+        let delayPoints = WakeStatistics.trend(of: samples(.always), .timeToOff, grouping: .byWeekday, calendar: calendar).points
+        expect(alarmPoints.map(\.id) == delayPoints.map(\.id), "every chart has the same points")
+        expect(delayPoints.allSatisfy { close($0.minute, [1, 7].contains($0.weekday!) ? 30 : 5) }, "the time to turn it off on the chart")
+
+        let weekly = WakeStatistics.trend(of: samples(.always), .offTime, grouping: .wholeWeek, calendar: calendar)
         expect(weekly.resolution == .week, "longer periods show weekly averages")
         expect(weekly.points.count >= 14 && weekly.points.count <= 16, "about one point per week (got \(weekly.points.count))")
         expect(weekly.points.reduce(0) { $0 + $1.count } == 100, "weekly points cover every wake-up")
         expect(weekly.points.allSatisfy { $0.weekday == nil && $0.minute >= 425 && $0.minute <= 510 }, "weekly averages")
 
-        let perDay = WakeStatistics.trend(of: samples(.always), grouping: .byWeekday, calendar: calendar)
+        let perDay = WakeStatistics.trend(of: samples(.always), .offTime, grouping: .byWeekday, calendar: calendar)
         expect(Set(perDay.points.compactMap(\.weekday)) == Set(1...7), "one line per weekday")
         expect(perDay.points.allSatisfy { point in
             close(point.minute, [1, 7].contains(point.weekday!) ? 510 : 425)
         }, "each weekday line keeps its own times")
 
-        let years = (0..<500).map { back in
-            WakeSample(day: calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T00:00:00"))!, weekday: 1, minuteOfDay: 420)
+        func sample(_ day: Date, weekday: Int, off: Double, delay: Double = 5) -> WakeSample {
+            WakeSample(day: day, weekday: weekday, alarmMinute: WakeStatistics.normalized(off - delay), offMinute: off, minutesToOff: delay)
         }
-        let monthly = WakeStatistics.trend(of: years.reversed(), grouping: .wholeWeek, calendar: calendar)
+        let years = (0..<500).map { back in
+            sample(calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T00:00:00"))!, weekday: 1, off: 420)
+        }
+        let monthly = WakeStatistics.trend(of: years.reversed(), .offTime, grouping: .wholeWeek, calendar: calendar)
         expect(monthly.resolution == .month && monthly.points.count == 18, "years show monthly averages (got \(monthly.points.count))")
 
         let night = [
-            WakeSample(day: date("2026-10-01T00:00:00"), weekday: 5, minuteOfDay: 1430),
-            WakeSample(day: date("2026-10-02T00:00:00"), weekday: 6, minuteOfDay: 10),
+            sample(date("2026-10-01T00:00:00"), weekday: 5, off: 1430, delay: 10),
+            sample(date("2026-10-02T00:00:00"), weekday: 6, off: 10, delay: 800),
         ]
-        let nightTrend = WakeStatistics.trend(of: night, grouping: .wholeWeek, calendar: calendar).points
+        let nightTrend = WakeStatistics.trend(of: night, .offTime, grouping: .wholeWeek, calendar: calendar).points
         expect(nightTrend.count == 2 && abs(nightTrend[0].minute - nightTrend[1].minute) == 20, "the chart does not jump at midnight")
-        let nightAverage = WakeStatistics.trend(of: night, grouping: .wholeWeek, calendar: calendar).average
+        let nightAverage = WakeStatistics.trend(of: night, .offTime, grouping: .wholeWeek, calendar: calendar).average
         expect(close(nightAverage, 0) || close(nightAverage, 1440), "the chart's average sits between the points")
+        let nightDelay = WakeStatistics.trend(of: night, .timeToOff, grouping: .wholeWeek, calendar: calendar)
+        expect(nightDelay.points.map(\.minute) == [10, 800] && close(nightDelay.average, 405), "durations on the chart are plain numbers")
         expect(close(weekly.average, (byDay[1]!.average * 28 + 425 * 72) / 100), "the chart's average covers every wake-up")
 
-        let axis = WakeStatistics.axis(for: [401, 472])
+        let axis = WakeStatistics.axis(for: [401, 472], .offTime)
         expect(axis == (390, 510, 30), "axis in half hours around the data (got \(axis))")
-        let single = WakeStatistics.axis(for: [420])
+        let single = WakeStatistics.axis(for: [420], .alarmTime)
         expect(single == (405, 435, 15), "a single point still gets an axis (got \(single))")
+        let quick = WakeStatistics.axis(for: [2.5, 9], .timeToOff)
+        expect(quick == (0, 10, 2), "durations get minute steps (got \(quick))")
+        let instant = WakeStatistics.axis(for: [0.2], .timeToOff)
+        expect(instant == (0, 1, 1), "durations never go below zero (got \(instant))")
     }
 }
