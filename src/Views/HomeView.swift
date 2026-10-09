@@ -161,7 +161,7 @@ struct HomeView: View {
 
     private var statsSection: some View {
         let week = WakeStatistics.samples(from: controller.state.history, period: .week, now: controller.now, calendar: .current)
-        let average = WakeStatistics.summary(of: week.map(\.minuteOfDay))?.average
+        let average = WakeStatistics.summary(of: week, .offTime)?.average
         return Section {
             NavigationLink {
                 StatsView()
