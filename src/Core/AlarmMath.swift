@@ -16,6 +16,9 @@ enum AlarmRules {
     static let testDelay: TimeInterval = 60
     static let testRetryMinutes = [1, 2, 3]
     static let testSessionWindow: TimeInterval = 10 * 60
+    /// Wake-ups kept for the statistics (about ten years of daily alarms).
+    static let historyLimit = 3700
+    static let testHistoryLimit = 10
 }
 
 enum AlarmMath {

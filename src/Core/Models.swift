@@ -1,11 +1,30 @@
 import Foundation
 
-struct AlarmSettings: Codable, Equatable {
+struct AlarmSettings: Equatable {
     var isEnabled = false
     var hour = 7
     var minute = 0
     /// Calendar weekdays: 1 = Sunday … 7 = Saturday.
     var weekdays: Set<Int> = Set(1...7)
+    var difficulty = ChallengeDifficulty.twoDigits
+}
+
+extension AlarmSettings: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, hour, minute, weekdays, difficulty
+    }
+
+    // Every key is optional so that older saved data keeps loading after updates.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? isEnabled
+        hour = try container.decodeIfPresent(Int.self, forKey: .hour) ?? hour
+        minute = try container.decodeIfPresent(Int.self, forKey: .minute) ?? minute
+        weekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .weekdays) ?? weekdays
+        // An unknown level (saved by a newer version) must not lose the alarm.
+        difficulty = (try? container.decodeIfPresent(ChallengeDifficulty.self, forKey: .difficulty)) ?? difficulty
+    }
 }
 
 /// One weekly-repeating AlarmKit alarm per selected weekday. Each one carries the
@@ -67,6 +86,25 @@ struct VigiliaState: Equatable {
         if completedOccurrences.count > 60 {
             completedOccurrences.removeFirst(completedOccurrences.count - 60)
         }
+    }
+
+    /// Newest first. Real wake-ups are kept for the statistics; tests only show up
+    /// in the list on the home screen.
+    mutating func recordWake(_ record: WakeRecord) {
+        var kept: [WakeRecord] = []
+        var wakes = 0
+        var tests = 0
+        for entry in [record] + history {
+            if entry.isTest {
+                tests += 1
+                if tests > AlarmRules.testHistoryLimit { continue }
+            } else {
+                wakes += 1
+                if wakes > AlarmRules.historyLimit { continue }
+            }
+            kept.append(entry)
+        }
+        history = kept
     }
 
     func hasPendingRetry(for occurrence: Date, after now: Date) -> Bool {

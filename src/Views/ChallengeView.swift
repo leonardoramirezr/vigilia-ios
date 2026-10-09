@@ -8,7 +8,7 @@ struct ChallengeView: View {
 
     @EnvironmentObject private var controller: AlarmController
     @Environment(\.scenePhase) private var scenePhase
-    @State private var challenge = ChallengeState(now: Date(), seed: UInt64.random(in: .min ... .max))
+    @State private var challenge: ChallengeState
     @State private var input = ""
     @State private var now = Date()
     @State private var started = false
@@ -20,6 +20,11 @@ struct ChallengeView: View {
 
     private enum Flash {
         case correct, wrong
+    }
+
+    init(request: ChallengeRequest) {
+        self.request = request
+        _challenge = State(initialValue: Self.newChallenge(for: request))
     }
 
     private var occurrence: Date? {
@@ -95,7 +100,7 @@ struct ChallengeView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(occurrence == nil ? "Reto para desbloquear" : "Reto para apagar la alarma")
                     .font(.headline)
-                Text("1 minuto de cálculo mental. El tiempo solo corre mientras respondes bien.")
+                Text("1 minuto de cálculo mental, operaciones de \(request.difficulty.title). El tiempo solo corre mientras respondes bien.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -191,8 +196,12 @@ struct ChallengeView: View {
         guard !started else { return }
         started = true
         UIApplication.shared.isIdleTimerDisabled = true
-        challenge = ChallengeState(now: Date(), seed: UInt64.random(in: .min ... .max))
+        challenge = Self.newChallenge(for: request)
         controller.challengeDidStart(request)
+    }
+
+    private static func newChallenge(for request: ChallengeRequest) -> ChallengeState {
+        ChallengeState(rules: ChallengeRules(difficulty: request.difficulty), now: Date(), seed: UInt64.random(in: .min ... .max))
     }
 
     private func tick(at date: Date) {
