@@ -1,11 +1,20 @@
-APP_NAME := YOUR-APP-NAME
+APP_NAME := Vigilia
 BUILD_DIR := build
 
 build:
 	bash build.sh
 
-install: build
-	rm -rf "/Applications/$(APP_NAME).app"
-	cp -R "$(BUILD_DIR)/$(APP_NAME).app" /Applications/
+ipa: build
 
-.PHONY: build install
+test:
+	mkdir -p $(BUILD_DIR)
+	xcrun swiftc -parse-as-library src/Core/*.swift tests/*.swift -o $(BUILD_DIR)/logic-tests
+	./$(BUILD_DIR)/logic-tests
+
+sounds:
+	python3 scripts/generate_sounds.py --out $(BUILD_DIR)/sounds
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+.PHONY: build ipa test sounds clean
