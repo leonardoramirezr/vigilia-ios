@@ -47,7 +47,7 @@ struct LogicTests {
     }
 
     static func testSoundRotation() {
-        for count in [1, 2, 3, 4, 7, 30] {
+        for count in [1, 2, 3, 4, 7, 30, 90] {
             var previous: Int?
             var cycles: [Int: Set<Int>] = [:]
             for day in -400...1200 {
