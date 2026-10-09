@@ -36,7 +36,7 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 - Hay que acumular **60 segundos**. Después de cada respuesta correcta el reloj corre 15 s; si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
 - Un error resta 5 s; saltar una operación también.
 - Si te quedas 15 s sin responder, la alarma vuelve a sonar dentro de la app.
-- Si sales de la app el reto empieza de cero, y si la cierras, iOS vuelve a sonar la alarma en poco más de un minuto.
+- Si sales de la app el reto empieza de cero, y si la cierras, la alarma vuelve a sonar en poco más de un minuto.
 
 ### Ajustes bloqueados
 Mientras la alarma está activada, **cambiar la hora, quitar días o desactivarla también exige el reto** (luego quedan desbloqueados 5 minutos). Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora y los días antes de que se bloquee.

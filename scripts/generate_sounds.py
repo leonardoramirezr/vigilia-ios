@@ -66,9 +66,6 @@ def table(kind, harmonics_limit):
     return values
 
 
-SINE = None
-
-
 def note(kind, f0, f1=None, dur=0.2, attack=0.004, release=0.02, decay=None,
          vib_rate=0.0, vib_depth=0.0, fm_ratio=0.0, fm_index=0.0, fm_decay=None,
          lowpass=None, seed=0):
