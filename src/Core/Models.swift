@@ -1,11 +1,53 @@
 import Foundation
 
-struct AlarmSettings: Codable, Equatable {
+struct AlarmTime: Codable, Hashable {
+    var hour: Int
+    var minute: Int
+}
+
+struct AlarmSettings: Equatable {
     var isEnabled = false
     var hour = 7
     var minute = 0
     /// Calendar weekdays: 1 = Sunday … 7 = Saturday.
     var weekdays: Set<Int> = Set(1...7)
+    /// When false, each weekday rings at its own time from `dayTimes`.
+    var sameTimeEveryDay = true
+    /// Per-weekday times, used only when `sameTimeEveryDay` is false. Days missing
+    /// here ring at `hour:minute`. Kept while the same time is used, so switching
+    /// back to per-day times restores them.
+    var dayTimes: [Int: AlarmTime] = [:]
+
+    var defaultTime: AlarmTime {
+        AlarmTime(hour: hour, minute: minute)
+    }
+
+    func time(on weekday: Int) -> AlarmTime {
+        sameTimeEveryDay ? defaultTime : dayTimes[weekday] ?? defaultTime
+    }
+
+    /// Every selected weekday with the time it rings.
+    var schedule: [Int: AlarmTime] {
+        Dictionary(uniqueKeysWithValues: weekdays.map { ($0, time(on: $0)) })
+    }
+}
+
+extension AlarmSettings: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes
+    }
+
+    // Every key is optional so that settings saved by older versions keep loading.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? isEnabled
+        hour = try container.decodeIfPresent(Int.self, forKey: .hour) ?? hour
+        minute = try container.decodeIfPresent(Int.self, forKey: .minute) ?? minute
+        weekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .weekdays) ?? weekdays
+        sameTimeEveryDay = try container.decodeIfPresent(Bool.self, forKey: .sameTimeEveryDay) ?? sameTimeEveryDay
+        dayTimes = try container.decodeIfPresent([Int: AlarmTime].self, forKey: .dayTimes) ?? dayTimes
+    }
 }
 
 /// One weekly-repeating AlarmKit alarm per selected weekday. Each one carries the
@@ -69,6 +111,26 @@ struct VigiliaState: Equatable {
         }
     }
 
+    /// Applies a settings change unless an alarm is going off (`isAlerting`) or its
+    /// challenge is still pending. Every change restarts `armedSince`, which drops the
+    /// ringing occurrence from `activeSession`: with no re-ring pending, the session
+    /// would end and the alarm would stop coming back without the challenge.
+    /// Returns false when the change was ignored or changed nothing.
+    mutating func changeSettings(
+        at now: Date, isAlerting: Bool, calendar: Calendar, _ change: (inout AlarmSettings) -> Void
+    ) -> Bool {
+        guard !isAlerting, activeSession(at: now, calendar: calendar) == nil else { return false }
+        var updated = settings
+        change(&updated)
+        if updated.weekdays.isEmpty {
+            updated.weekdays = settings.weekdays
+        }
+        guard updated != settings else { return false }
+        settings = updated
+        armedSince = now
+        return true
+    }
+
     func hasPendingRetry(for occurrence: Date, after now: Date) -> Bool {
         retries.contains { $0.occurrence.isSameInstant(as: occurrence) && $0.fireDate > now }
     }
@@ -81,8 +143,7 @@ struct VigiliaState: Equatable {
         }
         if settings.isEnabled,
            let latest = AlarmMath.latestOccurrence(
-               weekdays: settings.weekdays, hour: settings.hour, minute: settings.minute,
-               notAfter: now.addingTimeInterval(AlarmRules.earlyTolerance), calendar: calendar),
+               schedule: settings.schedule, notAfter: now.addingTimeInterval(AlarmRules.earlyTolerance), calendar: calendar),
            latest >= armedSince {
             candidates.append(ActiveSession(occurrence: latest, isTest: false))
         }
