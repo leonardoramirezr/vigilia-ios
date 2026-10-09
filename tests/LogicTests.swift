@@ -12,7 +12,10 @@ struct LogicTests {
         testProblems()
         testChallengeClock()
         testOccurrences()
+        testDaySchedules()
         testSessions()
+        testSettingsWhileRinging()
+        testStoredData()
         print("\(checks) checks, \(failures) failures")
         exit(failures == 0 ? 0 : 1)
     }
@@ -153,18 +156,123 @@ struct LogicTests {
         expect(state.progress == 0 && !state.isComplete && state.lastCorrectAt == nil, "restart starts over")
     }
 
+    static func schedule(_ weekdays: Set<Int>, _ hour: Int, _ minute: Int) -> [Int: AlarmTime] {
+        Dictionary(uniqueKeysWithValues: weekdays.map { ($0, AlarmTime(hour: hour, minute: minute)) })
+    }
+
     static func testOccurrences() {
         let weekdaysOnly: Set<Int> = [2, 3, 4, 5, 6]
-        expect(AlarmMath.nextOccurrence(weekdays: Set(1...7), hour: 7, minute: 0, after: date("2026-10-09T06:00:00"), calendar: calendar)
+        expect(AlarmMath.nextOccurrence(schedule: schedule(Set(1...7), 7, 0), after: date("2026-10-09T06:00:00"), calendar: calendar)
                == date("2026-10-09T07:00:00"), "same-day occurrence")
-        expect(AlarmMath.nextOccurrence(weekdays: weekdaysOnly, hour: 7, minute: 0, after: date("2026-10-09T07:30:00"), calendar: calendar)
+        expect(AlarmMath.nextOccurrence(schedule: schedule(weekdaysOnly, 7, 0), after: date("2026-10-09T07:30:00"), calendar: calendar)
                == date("2026-10-12T07:00:00"), "skips the weekend")
-        expect(AlarmMath.latestOccurrence(weekdays: weekdaysOnly, hour: 7, minute: 0, notAfter: date("2026-10-09T07:30:00"), calendar: calendar)
+        expect(AlarmMath.latestOccurrence(schedule: schedule(weekdaysOnly, 7, 0), notAfter: date("2026-10-09T07:30:00"), calendar: calendar)
                == date("2026-10-09T07:00:00"), "latest occurrence is today")
-        expect(AlarmMath.latestOccurrence(weekdays: [2], hour: 7, minute: 0, notAfter: date("2026-10-09T07:30:00"), calendar: calendar)
+        expect(AlarmMath.latestOccurrence(schedule: schedule([2], 7, 0), notAfter: date("2026-10-09T07:30:00"), calendar: calendar)
                == date("2026-10-05T07:00:00"), "latest Monday")
-        expect(AlarmMath.latestOccurrence(weekdays: weekdaysOnly, hour: 7, minute: 0, notAfter: date("2026-10-09T07:00:00"), calendar: calendar)
+        expect(AlarmMath.latestOccurrence(schedule: schedule(weekdaysOnly, 7, 0), notAfter: date("2026-10-09T07:00:00"), calendar: calendar)
                == date("2026-10-09T07:00:00"), "an occurrence at the exact time counts")
+        expect(AlarmMath.nextOccurrence(schedule: [:], after: date("2026-10-09T06:00:00"), calendar: calendar) == nil,
+               "no days, no occurrence")
+    }
+
+    /// 2026-10-09 is a Friday (weekday 6).
+    static func testDaySchedules() {
+        var settings = AlarmSettings(isEnabled: true, hour: 7, minute: 0, weekdays: Set(1...7))
+        settings.dayTimes = [6: AlarmTime(hour: 5, minute: 45), 7: AlarmTime(hour: 9, minute: 30)]
+        expect(settings.schedule == schedule(Set(1...7), 7, 0), "the same time every day ignores the per-day times")
+
+        settings.sameTimeEveryDay = false
+        expect(settings.time(on: 6) == AlarmTime(hour: 5, minute: 45), "Friday uses its own time")
+        expect(settings.time(on: 7) == AlarmTime(hour: 9, minute: 30), "Saturday uses its own time")
+        expect(settings.time(on: 2) == AlarmTime(hour: 7, minute: 0), "a day without its own time uses the shared one")
+        settings.weekdays = [2, 6, 7]
+        expect(Set(settings.schedule.keys) == [2, 6, 7], "only the selected days ring")
+
+        let times = settings.schedule
+        expect(AlarmMath.nextOccurrence(schedule: times, after: date("2026-10-09T05:00:00"), calendar: calendar)
+               == date("2026-10-09T05:45:00"), "Friday rings at its own time")
+        expect(AlarmMath.nextOccurrence(schedule: times, after: date("2026-10-09T06:00:00"), calendar: calendar)
+               == date("2026-10-10T09:30:00"), "then Saturday at its own time")
+        expect(AlarmMath.nextOccurrence(schedule: times, after: date("2026-10-10T10:00:00"), calendar: calendar)
+               == date("2026-10-12T07:00:00"), "then Monday at the shared time")
+        expect(AlarmMath.latestOccurrence(schedule: times, notAfter: date("2026-10-10T08:00:00"), calendar: calendar)
+               == date("2026-10-09T05:45:00"), "before Saturday's alarm the latest one is Friday's")
+
+        var state = VigiliaState()
+        state.settings = settings
+        state.armedSince = date("2026-10-08T22:00:00")
+        expect(state.activeSession(at: date("2026-10-09T05:46:00"), calendar: calendar)?.occurrence == date("2026-10-09T05:45:00"),
+               "a per-day time starts a session")
+        expect(state.activeSession(at: date("2026-10-09T07:01:00"), calendar: calendar) == nil,
+               "the shared time does not ring on a day with its own time")
+        expect(state.activeSession(at: date("2026-10-10T07:01:00"), calendar: calendar) == nil,
+               "nothing rings on Saturday before its own time")
+    }
+
+    static func testSettingsWhileRinging() {
+        let alarm = date("2026-10-09T07:00:00")
+        var state = VigiliaState()
+        state.settings = AlarmSettings(isEnabled: true, hour: 7, minute: 0, weekdays: Set(1...7))
+        state.armedSince = date("2026-10-08T22:00:00")
+        let ringing = alarm.addingTimeInterval(30 * 60)
+
+        // Why changes are ignored: applied blindly, a new time restarts `armedSince` and,
+        // with no re-ring pending, the session (and the alarm) ends without the challenge.
+        var blind = state
+        blind.settings.hour = 8
+        blind.armedSince = ringing
+        expect(blind.activeSession(at: ringing, calendar: calendar) == nil, "a blind change would end the session")
+
+        var guarded = state
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.hour = 8 },
+               "a new time is ignored while the challenge is pending")
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.isEnabled = false },
+               "the alarm cannot be turned off while it rings")
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.weekdays = [1] },
+               "days cannot change while it rings")
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) {
+                   $0.sameTimeEveryDay = false
+                   $0.dayTimes[6] = AlarmTime(hour: 9, minute: 0)
+               }, "per-day times cannot change while it rings")
+        expect(guarded == state, "ignored changes leave the state untouched")
+        expect(guarded.activeSession(at: ringing, calendar: calendar)?.occurrence == alarm, "the session goes on")
+        expect(!guarded.changeSettings(at: alarm.addingTimeInterval(-10), isAlerting: false, calendar: calendar) { $0.hour = 8 },
+               "ignored a few seconds before it rings, too")
+        expect(!guarded.changeSettings(at: alarm.addingTimeInterval(-3600), isAlerting: true, calendar: calendar) { $0.hour = 8 },
+               "ignored while AlarmKit reports an alarm going off")
+
+        guarded.markCompleted(alarm)
+        expect(guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.hour = 8 },
+               "allowed once the challenge is done")
+        expect(guarded.settings.hour == 8 && guarded.armedSince == ringing, "the change is applied and re-arms")
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.hour = 8 }, "no-op changes report false")
+        expect(!guarded.changeSettings(at: ringing, isAlerting: false, calendar: calendar) { $0.weekdays = [] }, "at least one day stays selected")
+
+        var test = VigiliaState()
+        test.test = TestRecord(id: UUID(), occurrence: alarm)
+        expect(!test.changeSettings(at: alarm.addingTimeInterval(60), isAlerting: false, calendar: calendar) { $0.isEnabled = true },
+               "settings wait for the test alarm's challenge too")
+        expect(test.changeSettings(at: alarm.addingTimeInterval(-120), isAlerting: false, calendar: calendar) { $0.isEnabled = true },
+               "allowed before the test rings")
+    }
+
+    static func testStoredData() {
+        // Saved by the version that only had one time for every day.
+        let legacy = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":15,"weekdays":[2,3,4,5,6]},"armedSince":700000000}"#.utf8)
+        let decoded = try? JSONDecoder().decode(VigiliaState.self, from: legacy)
+        expect(decoded != nil, "data from the previous version still loads")
+        if let settings = decoded?.settings {
+            expect(settings.isEnabled && settings.hour == 6 && settings.minute == 15 && settings.weekdays == [2, 3, 4, 5, 6],
+                   "previous settings are kept")
+            expect(settings.sameTimeEveryDay && settings.dayTimes.isEmpty, "previous settings keep one time for every day")
+        }
+
+        var state = VigiliaState()
+        state.settings.sameTimeEveryDay = false
+        state.settings.dayTimes = [1: AlarmTime(hour: 10, minute: 0), 6: AlarmTime(hour: 5, minute: 45)]
+        let data = try! JSONEncoder().encode(state)
+        expect(try! JSONDecoder().decode(VigiliaState.self, from: data) == state, "per-day times survive a round trip")
     }
 
     static func testSessions() {

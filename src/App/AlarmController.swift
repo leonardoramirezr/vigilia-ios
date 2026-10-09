@@ -42,6 +42,8 @@ final class AlarmController: ObservableObject {
     @Published private(set) var state: VigiliaState
     @Published private(set) var authorization: AlarmManager.AuthorizationState
     @Published private(set) var now = Date()
+    /// AlarmKit reports one of the app's alarms going off right now.
+    @Published private(set) var hasAlertingAlarm = false
     @Published var challenge: ChallengeRequest?
     @Published var notice: String?
 
@@ -81,6 +83,12 @@ final class AlarmController: ObservableObject {
         state.settings.isEnabled && (state.settingsUnlockedUntil ?? .distantPast) <= now
     }
 
+    /// An alarm is going off, or went off and its challenge is still pending.
+    /// Settings changes are ignored meanwhile (see `applySettings`).
+    var isAlarmRinging: Bool {
+        hasAlertingAlarm || state.activeSession(at: now, calendar: calendar) != nil
+    }
+
     var nextOccurrence: Date? {
         nextOccurrence(after: now)
     }
@@ -96,6 +104,7 @@ final class AlarmController: ObservableObject {
         startObserving()
         now = Date()
         authorization = manager.authorizationState
+        refreshAlerting()
         presentChallengeIfNeeded()
         reconcileSoon(after: 0)
     }
@@ -104,6 +113,7 @@ final class AlarmController: ObservableObject {
     func heartbeat() {
         loadState()
         now = Date()
+        refreshAlerting()
         presentChallengeIfNeeded()
     }
 
@@ -113,7 +123,8 @@ final class AlarmController: ObservableObject {
         Task {
             for await alarms in manager.alarmUpdates {
                 self.now = Date()
-                if alarms.contains(where: { $0.state == .alerting }) {
+                self.hasAlertingAlarm = alarms.contains { $0.state == .alerting }
+                if self.hasAlertingAlarm {
                     self.presentChallengeIfNeeded()
                 }
             }
@@ -145,8 +156,7 @@ final class AlarmController: ObservableObject {
                     self.notice = "Sin permiso para crear alarmas. Actívalo en Ajustes > Vigilia > Alarmas."
                     return
                 }
-                guard !self.state.settings.isEnabled else { return }
-                self.applySettings { $0.isEnabled = true }
+                guard !self.state.settings.isEnabled, self.applySettings({ $0.isEnabled = true }) else { return }
                 // A few minutes to fine-tune the time and days before it locks.
                 self.state.settingsUnlockedUntil = Date().addingTimeInterval(AlarmRules.settingsUnlockDuration)
                 self.now = Date()
@@ -166,17 +176,23 @@ final class AlarmController: ObservableObject {
         challenge = ChallengeRequest(purpose: .unlockSettings)
     }
 
-    private func applySettings(_ change: (inout AlarmSettings) -> Void) {
-        var settings = state.settings
-        change(&settings)
-        if settings.weekdays.isEmpty {
-            settings.weekdays = state.settings.weekdays
-        }
-        guard settings != state.settings else { return }
-        state.settings = settings
-        state.armedSince = Date()
+    /// Ignored while an alarm rings (see `VigiliaState.changeSettings`): only the
+    /// challenge may silence it. Returns false when the change was ignored.
+    @discardableResult
+    private func applySettings(_ change: (inout AlarmSettings) -> Void) -> Bool {
+        // Publishing `now` also puts the pickers back on the stored values when ignored.
+        now = Date()
+        refreshAlerting()
+        guard state.changeSettings(at: now, isAlerting: hasAlertingAlarm, calendar: calendar, change) else { return false }
         save()
         reconcileSoon(after: 0.8)
+        return true
+    }
+
+    private func refreshAlerting() {
+        if let alarms = try? manager.alarms {
+            hasAlertingAlarm = alarms.contains { $0.state == .alerting }
+        }
     }
 
     func ensureAuthorized() async -> Bool {
@@ -366,6 +382,7 @@ final class AlarmController: ObservableObject {
             notice = "No se pudieron leer las alarmas: \(error.localizedDescription)"
             return
         }
+        hasAlertingAlarm = live.values.contains { $0.state == .alerting }
 
         let now = Date()
         let session = state.activeSession(at: now, calendar: calendar)
@@ -406,15 +423,13 @@ final class AlarmController: ObservableObject {
     }
 
     private func reconcileMainAlarms(live: [UUID: Alarm], now: Date) async {
-        let settings = state.settings
-        let weekdays = settings.isEnabled ? settings.weekdays : []
+        let times = state.settings.isEnabled ? state.settings.schedule : [:]
         var kept: [MainAlarmRecord] = []
         var covered = Set<Int>()
 
         for record in state.mains {
             guard let alarm = live[record.id] else { continue }
-            let matches = weekdays.contains(record.weekday)
-                && record.hour == settings.hour && record.minute == settings.minute
+            let matches = times[record.weekday] == AlarmTime(hour: record.hour, minute: record.minute)
                 && !covered.contains(record.weekday)
             if alarm.state == .alerting {
                 // Never interrupt an alarm that is ringing; it is revisited next time.
@@ -423,7 +438,7 @@ final class AlarmController: ObservableObject {
                 continue
             }
             if matches, let next = AlarmMath.nextOccurrence(
-                weekday: record.weekday, hour: settings.hour, minute: settings.minute, after: now, calendar: calendar) {
+                weekday: record.weekday, hour: record.hour, minute: record.minute, after: now, calendar: calendar) {
                 // Swapping the alarm right before it fires could lose it, so keep it then.
                 if soundInfo(for: next)?.file == record.sound || next.timeIntervalSince(now) < 120 {
                     var updated = record
@@ -436,17 +451,17 @@ final class AlarmController: ObservableObject {
             try? manager.cancel(id: record.id)
         }
 
-        for weekday in weekdays.sorted() where !covered.contains(weekday) {
+        for (weekday, time) in times.sorted(by: { $0.key < $1.key }) where !covered.contains(weekday) {
             guard let next = AlarmMath.nextOccurrence(
-                weekday: weekday, hour: settings.hour, minute: settings.minute, after: now, calendar: calendar) else { continue }
+                weekday: weekday, hour: time.hour, minute: time.minute, after: now, calendar: calendar) else { continue }
             let sound = soundInfo(for: next)?.file
             let schedule = Alarm.Schedule.relative(.init(
-                time: .init(hour: settings.hour, minute: settings.minute),
+                time: .init(hour: time.hour, minute: time.minute),
                 repeats: .weekly([Self.localeWeekday(weekday)])))
             let id = UUID()
             do {
                 try await scheduleAlarm(id: id, kind: .main, schedule: schedule, sound: sound)
-                kept.append(MainAlarmRecord(id: id, weekday: weekday, hour: settings.hour, minute: settings.minute, sound: sound, nextFire: next))
+                kept.append(MainAlarmRecord(id: id, weekday: weekday, hour: time.hour, minute: time.minute, sound: sound, nextFire: next))
             } catch {
                 report(error)
             }
@@ -538,8 +553,7 @@ final class AlarmController: ObservableObject {
     private func nextOccurrence(after date: Date) -> Date? {
         let settings = state.settings
         guard settings.isEnabled else { return nil }
-        return AlarmMath.nextOccurrence(
-            weekdays: settings.weekdays, hour: settings.hour, minute: settings.minute, after: date, calendar: calendar)
+        return AlarmMath.nextOccurrence(schedule: settings.schedule, after: date, calendar: calendar)
     }
 
     private func save() {

@@ -55,16 +55,30 @@ struct HomeView: View {
     }
 
     private var alarmSection: some View {
-        Section {
+        let settings = controller.state.settings
+        let isEditable = !controller.isSettingsLocked && !controller.isAlarmRinging
+        return Section {
             Toggle(isOn: enabledBinding) {
                 Label("Alarma activada", systemImage: "alarm.fill")
             }
-            .disabled(controller.isSettingsLocked)
-            DatePicker("Hora", selection: timeBinding, displayedComponents: .hourAndMinute)
-                .disabled(controller.isSettingsLocked)
+            .disabled(!isEditable)
             WeekdayPicker(selection: weekdaysBinding)
-                .disabled(controller.isSettingsLocked)
-            if controller.isSettingsLocked {
+                .disabled(!isEditable)
+            Toggle("Misma hora todos los días", isOn: sameTimeBinding)
+                .disabled(!isEditable)
+            if settings.sameTimeEveryDay {
+                DatePicker("Hora", selection: timeBinding(for: nil), displayedComponents: .hourAndMinute)
+                    .disabled(!isEditable)
+            } else {
+                ForEach(WeekdayPicker.orderedDays.filter { settings.weekdays.contains($0) }, id: \.self) { day in
+                    DatePicker(WeekdayPicker.names[day - 1].capitalized, selection: timeBinding(for: day), displayedComponents: .hourAndMinute)
+                        .disabled(!isEditable)
+                }
+            }
+            if controller.isAlarmRinging {
+                Label("La alarma está sonando: no se puede cambiar hasta que completes el reto.", systemImage: "alarm.waves.left.and.right.fill")
+                    .foregroundStyle(.orange)
+            } else if controller.isSettingsLocked {
                 Button {
                     controller.requestUnlock()
                 } label: {
@@ -203,17 +217,30 @@ struct HomeView: View {
             set: { controller.setEnabled($0) })
     }
 
-    private var timeBinding: Binding<Date> {
+    private var sameTimeBinding: Binding<Bool> {
+        Binding(
+            get: { controller.state.settings.sameTimeEveryDay },
+            set: { same in controller.updateSettings { $0.sameTimeEveryDay = same } })
+    }
+
+    /// The time of one weekday, or the time shared by every day when `weekday` is nil.
+    private func timeBinding(for weekday: Int?) -> Binding<Date> {
         Binding(
             get: {
                 let settings = controller.state.settings
-                return Calendar.current.date(bySettingHour: settings.hour, minute: settings.minute, second: 0, of: Date()) ?? Date()
+                let time = weekday.map { settings.time(on: $0) } ?? settings.defaultTime
+                return Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: Date()) ?? Date()
             },
             set: { date in
                 let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-                controller.updateSettings {
-                    $0.hour = parts.hour ?? 7
-                    $0.minute = parts.minute ?? 0
+                let time = AlarmTime(hour: parts.hour ?? 7, minute: parts.minute ?? 0)
+                controller.updateSettings { settings in
+                    if let weekday {
+                        settings.dayTimes[weekday] = time
+                    } else {
+                        settings.hour = time.hour
+                        settings.minute = time.minute
+                    }
                 }
             })
     }
@@ -230,16 +257,17 @@ struct WeekdayPicker: View {
     @Environment(\.isEnabled) private var isEnabled
 
     private static let letters = ["D", "L", "M", "M", "J", "V", "S"]
-    private static let names = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
+    static let names = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]
 
-    private var orderedDays: [Int] {
+    /// Calendar weekdays starting on the locale's first day of the week.
+    static var orderedDays: [Int] {
         let first = Calendar.current.firstWeekday
         return (0..<7).map { (first - 1 + $0) % 7 + 1 }
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(orderedDays, id: \.self) { day in
+            ForEach(Self.orderedDays, id: \.self) { day in
                 let isOn = selection.contains(day)
                 Button {
                     var days = selection
