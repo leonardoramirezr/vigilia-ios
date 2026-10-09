@@ -79,7 +79,7 @@ struct HomeView: View {
         } footer: {
             Text(controller.state.settings.isEnabled
                  ? "Mientras esté activada, para cambiarla o apagarla tienes que completar el reto mental."
-                 : "Al activarla queda bloqueada: para cambiarla o apagarla tendrás que completar el reto mental.")
+                 : "Al activarla tendrás 5 minutos para ajustarla; después queda bloqueada y cambiarla o apagarla requiere el reto mental.")
         }
     }
 

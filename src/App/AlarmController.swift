@@ -2,6 +2,7 @@ import ActivityKit
 import AlarmKit
 import Foundation
 import SwiftUI
+import UIKit
 
 struct VigiliaAlarmMetadata: AlarmMetadata {
     var kind: String
@@ -52,15 +53,26 @@ final class AlarmController: ObservableObject {
     private var pendingReconcile: Task<Void, Never>?
     private var observing = false
     private var lastWatchdog = Date.distantPast
+    private var isStateLoaded = false
 
     private init() {
+        state = VigiliaState()
+        authorization = AlarmManager.shared.authorizationState
+        loadState()
+    }
+
+    /// After a reboot iOS keeps app data encrypted until the first unlock, and an
+    /// alarm button can launch the app before that. Unreadable data must never be
+    /// mistaken for "no alarm configured", or the next save would wipe the alarms.
+    private func loadState() {
+        guard !isStateLoaded else { return }
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let saved = try? JSONDecoder().decode(VigiliaState.self, from: data) {
             state = saved
-        } else {
-            state = VigiliaState()
+            isStateLoaded = true
+        } else if UIApplication.shared.isProtectedDataAvailable {
+            isStateLoaded = true
         }
-        authorization = AlarmManager.shared.authorizationState
     }
 
     // MARK: - Derived values for the UI
@@ -80,6 +92,7 @@ final class AlarmController: ObservableObject {
     // MARK: - Lifecycle
 
     func sceneDidBecomeActive() {
+        loadState()
         startObserving()
         now = Date()
         authorization = manager.authorizationState
@@ -89,6 +102,7 @@ final class AlarmController: ObservableObject {
 
     /// Called every few seconds while the app is on screen.
     func heartbeat() {
+        loadState()
         now = Date()
         presentChallengeIfNeeded()
     }
@@ -131,7 +145,12 @@ final class AlarmController: ObservableObject {
                     self.notice = "Sin permiso para crear alarmas. Actívalo en Ajustes > Vigilia > Alarmas."
                     return
                 }
+                guard !self.state.settings.isEnabled else { return }
                 self.applySettings { $0.isEnabled = true }
+                // A few minutes to fine-tune the time and days before it locks.
+                self.state.settingsUnlockedUntil = Date().addingTimeInterval(AlarmRules.settingsUnlockDuration)
+                self.now = Date()
+                self.save()
             }
         } else if !isSettingsLocked {
             applySettings { $0.isEnabled = false }
@@ -217,8 +236,9 @@ final class AlarmController: ObservableObject {
     /// challenge is done, make sure it rings again within a minute.
     func alarmStoppedFromSystemUI() async {
         await enqueue {
+            self.loadState()
             let now = Date()
-            guard let session = self.state.activeSession(at: now, calendar: self.calendar) else { return }
+            guard self.isStateLoaded, let session = self.state.activeSession(at: now, calendar: self.calendar) else { return }
             let limit = session.isTest ? AlarmRules.testSessionWindow : AlarmRules.maxSessionLength
             guard now.timeIntervalSince(session.occurrence) < limit else { return }
             let ringsSoon = self.state.retries.contains {
@@ -236,6 +256,7 @@ final class AlarmController: ObservableObject {
     }
 
     func openChallengeFromAlarm() {
+        loadState()
         now = Date()
         presentChallengeIfNeeded()
     }
@@ -256,9 +277,13 @@ final class AlarmController: ObservableObject {
             .map(\.fireDate)
             .min()
         let closeToRinging = nextRing.map { $0.timeIntervalSince(now) < 45 } ?? true
-        guard closeToRinging, now.timeIntervalSince(lastWatchdog) > 10 else { return }
-        lastWatchdog = now
-        enqueue { await self.armWatchdog(for: occurrence) }
+        if closeToRinging, now.timeIntervalSince(lastWatchdog) > 10 {
+            lastWatchdog = now
+            enqueue { await self.armWatchdog(for: occurrence) }
+        } else {
+            // Answering while an alarm rings (e.g. the challenge was opened early) silences it.
+            enqueue { self.stopRingingAlarms() }
+        }
     }
 
     func completeChallenge(_ request: ChallengeRequest, summary: ChallengeSummary) {
@@ -327,9 +352,10 @@ final class AlarmController: ObservableObject {
 
     /// Brings the alarms registered in AlarmKit in line with the settings.
     private func reconcile() async {
+        loadState()
         self.now = Date()
         authorization = manager.authorizationState
-        guard authorization == .authorized else { return }
+        guard isStateLoaded, authorization == .authorized else { return }
 
         var live: [UUID: Alarm] = [:]
         do {
@@ -517,6 +543,7 @@ final class AlarmController: ObservableObject {
     }
 
     private func save() {
+        guard isStateLoaded else { return }
         if let data = try? JSONEncoder().encode(state) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
