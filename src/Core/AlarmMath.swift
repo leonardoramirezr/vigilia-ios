@@ -30,18 +30,21 @@ enum AlarmMath {
             matchingPolicy: .nextTime)
     }
 
-    static func nextOccurrence(weekdays: Set<Int>, hour: Int, minute: Int, after date: Date, calendar: Calendar) -> Date? {
-        weekdays
-            .compactMap { nextOccurrence(weekday: $0, hour: hour, minute: minute, after: date, calendar: calendar) }
+    /// `schedule` maps each weekday to the time it rings that day.
+    static func nextOccurrence(schedule: [Int: AlarmTime], after date: Date, calendar: Calendar) -> Date? {
+        schedule
+            .compactMap { weekday, time in
+                nextOccurrence(weekday: weekday, hour: time.hour, minute: time.minute, after: date, calendar: calendar)
+            }
             .min()
     }
 
-    static func latestOccurrence(weekdays: Set<Int>, hour: Int, minute: Int, notAfter date: Date, calendar: Calendar) -> Date? {
-        weekdays
-            .compactMap { weekday in
+    static func latestOccurrence(schedule: [Int: AlarmTime], notAfter date: Date, calendar: Calendar) -> Date? {
+        schedule
+            .compactMap { weekday, time in
                 calendar.nextDate(
                     after: date.addingTimeInterval(1),
-                    matching: DateComponents(hour: hour, minute: minute, second: 0, weekday: weekday),
+                    matching: DateComponents(hour: time.hour, minute: time.minute, second: 0, weekday: weekday),
                     matchingPolicy: .nextTime,
                     direction: .backward)
             }

@@ -2,6 +2,7 @@
 
 Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de alarmas que Apple abrió a apps de terceros en iOS 26:
 
+- ⏰ **La misma hora todos los días o una distinta para cada día** (por ejemplo, 6:30 entre semana y 9:00 el fin de semana).
 - 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 30 sonidos sintetizados desde cero y no se repite ninguno hasta haberlos usado todos.
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
 - 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien. Tú eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
@@ -27,7 +28,7 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 ## Cómo funciona
 
 ### Las alarmas
-- Por cada día de la semana elegido se programa una alarma semanal en AlarmKit con **el sonido que le toca a esa fecha**. Cada vez que abres la app (y la abres a diario, porque ahí se hace el reto) las alarmas se reajustan para que los sonidos sigan rotando. Si no abrieras la app en una semana, igual sonarían 7 sonidos distintos.
+- Por cada día de la semana elegido se programa una alarma semanal en AlarmKit, **a la hora de ese día** y con **el sonido que le toca a esa fecha**. Con «Misma hora todos los días» activado todos los días usan una sola hora; al desactivarlo eliges la hora de cada día por separado (y si vuelves a activarlo, las horas por día se guardan para la próxima vez). Cada vez que abres la app (y la abres a diario, porque ahí se hace el reto) las alarmas se reajustan para que los sonidos sigan rotando. Si no abrieras la app en una semana, igual sonarían 7 sonidos distintos.
 - Detrás de cada alarma hay una **cadena de repeticiones** ya programada en iOS: a los 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 45 y 60 minutos. Solo se cancela cuando completas el reto.
 - Si detienes la alarma desde la pantalla bloqueada, Vigilia además programa otra repetición a 1 minuto (si iOS ejecuta su acción de "detener"; a veces no lo hace, por eso existe la cadena).
 - La alerta tiene un único botón extra, **«Resolver reto»**, que abre la app directo en el reto.
@@ -49,6 +50,8 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 
 ### Ajustes bloqueados
 Mientras la alarma está activada, **cambiar la hora, los días o la dificultad, o desactivarla, también exige el reto** (luego quedan desbloqueados 5 minutos). El reto para desbloquear usa la dificultad que ya tenías. Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora, los días y la dificultad antes de que se bloquee.
+
+**Mientras la alarma está sonando** (o ya sonó y el reto sigue pendiente, incluida la prueba), cualquier cambio de hora, días, dificultad o del interruptor **se ignora**, aunque los ajustes estén desbloqueados. Así cambiar la hora no puede silenciarla ni hacer que deje de volver: solo el reto la apaga.
 
 ### Estadísticas
 En **Estadísticas** (pantalla principal) eliges tres cosas, independientes entre sí, y cualquier combinación funciona:
@@ -159,7 +162,7 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 1. **Modo de desarrollador:** Ajustes › Privacidad y seguridad › **Modo de desarrollador** › activar y reiniciar. (La opción aparece después del primer intento de instalar una app así.)
 2. **Confiar en tu Apple ID:** Ajustes › General › **VPN y gestión de dispositivos** › tu Apple ID › Confiar.
 3. Abre **Vigilia** y toca **Permitir alarmas**.
-4. Activa la alarma, elige la hora y los días.
+4. Activa la alarma, elige los días y la hora (o desactiva «Misma hora todos los días» para poner una hora distinta a cada día).
 5. Toca **Probar: sonará en 1 minuto**, bloquea el iPhone y comprueba que suena, que no se puede posponer y que solo se apaga con el reto.
 
 ---
@@ -168,7 +171,7 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 
 | Qué | Dónde |
 |---|---|
-| Hora y días | En la app |
+| Días y hora (la misma o una por día) | En la app |
 | Bundle ID, versión | `BUNDLE_ID=… VERSION=… make build` |
 | Repeticiones, duración de la sesión, desbloqueo | `AlarmRules` en [`src/Core/AlarmMath.swift`](src/Core/AlarmMath.swift) |
 | Duración del reto, penalizaciones | `ChallengeRules` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
