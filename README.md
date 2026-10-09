@@ -3,7 +3,7 @@
 Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de alarmas que Apple abrió a apps de terceros en iOS 26:
 
 - ⏰ **La misma hora todos los días o una distinta para cada día** (por ejemplo, 6:30 entre semana y 9:00 el fin de semana).
-- 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 30 sonidos sintetizados desde cero y no se repite ninguno hasta haberlos usado todos.
+- 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 90 sonidos sintetizados desde cero, todos diferentes entre sí, y no se repite ninguno hasta haberlos usado todos (unos tres meses).
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
 - 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien. Tú eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
 - 📈 **Estadísticas de tus despertares:** a qué hora sonó la alarma, a qué hora la apagaste y cuánto tardaste, con promedio, percentiles y gráficas de cómo han cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
@@ -17,7 +17,7 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 | Requisito | ¿Se pudo? | Detalle |
 |---|---|---|
 | Usar AlarmKit | ✅ Sí | Las alarmas las programa iOS con `AlarmManager`: suenan con el iPhone en silencio, en Concentración, con la app cerrada y después de reiniciar. |
-| Sonido diferente cada día | ✅ Sí | 30 sonidos propios en rotación barajada. Nunca suena el mismo dos días seguidos. |
+| Sonido diferente cada día | ✅ Sí | 90 sonidos propios en rotación barajada. Nunca suena el mismo dos días seguidos. |
 | Sin posponer, ni cerrando la app | ✅ Sí, con un matiz | iOS **siempre** muestra un control para detener la alarma y los botones físicos también la detienen; ninguna app puede quitar eso. Vigilia lo resuelve haciendo que la alarma **vuelva a sonar** (cada minuto y luego más espaciado, durante una hora) hasta que completes el reto. Esas repeticiones ya están programadas en iOS, así que cerrar o matar la app no las detiene. |
 | Apagarla con un ejercicio mental de 1 minuto | ✅ Sí | 60 s de cálculo mental; el reloj se pausa si dejas de responder y cada error resta 5 s. |
 | Compilar sin Xcode | ⚠️ Parcial | **GitHub Actions: sí, sin Mac y sin Xcode de tu lado.** **Local:** necesitas una Mac con Xcode *instalado* (nunca lo abres y no hay `.xcodeproj`). Sin Xcode instalado no es posible: el SDK de iOS solo viene dentro de Xcode. |
@@ -32,6 +32,21 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 - Detrás de cada alarma hay una **cadena de repeticiones** ya programada en iOS: a los 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 45 y 60 minutos. Solo se cancela cuando completas el reto.
 - Si detienes la alarma desde la pantalla bloqueada, Vigilia además programa otra repetición a 1 minuto (si iOS ejecuta su acción de "detener"; a veces no lo hace, por eso existe la cadena).
 - La alerta tiene un único botón extra, **«Resolver reto»**, que abre la app directo en el reto.
+
+### Los sonidos
+Son 90 y todos se sintetizan desde cero con [`scripts/generate_sounds.py`](scripts/generate_sounds.py), sin grabaciones ni audio de terceros. Cada uno tiene su propio timbre, ritmo y altura.
+
+| Tipo | Sonidos |
+|---|---|
+| Pitidos y señales | Pitidos clásicos, Pitidos agudos, Reloj digital, Tormenta de pitidos, Morse: DESPIERTA, Teletipo, Sonar, Pulsos que aceleran, Láseres, Alerta espacial, Robot parlanchín, Detector de humo, Marcha atrás, Walkie-talkie, Módem, Contador Geiger |
+| Sirenas, bocinas y silbatos | Sirena lenta, Sirena europea, Sirena aullido, Sirena antiaérea, Alarma de coche, Alarma de inmersión, Claxon, Zumbador, Sirena de niebla, Bocina de tren, Silbato de árbitro |
+| Campanas, timbres y relojes | Campanas de cristal, Campanario, Despertador de campana, Teléfono antiguo, Caja de música, Paso a nivel, Timbre de la puerta, Reloj cucú |
+| Instrumentos | Fanfarria, Toque de diana, Trompeta con sordina, Marimba nerviosa, Tambor metálico, Handpan, Vibráfono, Órgano, Organillero, Piano, Arpegio menor, Escalera infinita, Guitarra rasgueada, Guitarra eléctrica, Arpa, Koto, Violín, Gaita, Kazoo, Theremin, Didyeridú, Coro |
+| Estilos y ritmos | Videojuego de 8 bits, Cumbia, Mariachi, Trance, Bajo ácido, Dembow, Batucada, Taiko, Cencerro, Palmas flamencas, Redoble militar, Caracol y teponaztli, Tambores y gong, Scratch de DJ |
+| Máquinas y calle | Locomotora de vapor, Carrito de camotes, Afilador, Helicóptero, Carrera de autos, Tragamonedas |
+| Animales y efectos | Pájaros eléctricos, Grillos, Gallo, Pájaro carpintero, Coro de ranas, Gato con hambre, Mosquito, Gotas en la cueva, Patito de hule, Resortes, Pelota que rebota, Subida sin fin, Fallo del sistema |
+
+Para escucharlos sin compilar la app: `make sounds` los genera como WAV en `build/sounds/` (solo necesita Python 3).
 
 ### El reto
 - Operaciones aleatorias que se van complicando a lo largo del minuto: sumas, restas, multiplicaciones, sumas de tres números, series y combinaciones.
