@@ -4,7 +4,8 @@ Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de 
 
 - 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 30 sonidos sintetizados desde cero y no se repite ninguno hasta haberlos usado todos.
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
-- 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien.
+- 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien. Tú eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
+- 📈 **Estadísticas de tus despertares:** hora promedio y gráfica de cómo ha cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
 
 Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`, igual que la plantilla original) de dos formas: en **GitHub Actions** (sin Mac) o con un **script local**.
 
@@ -32,14 +33,36 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 - La alerta tiene un único botón extra, **«Resolver reto»**, que abre la app directo en el reto.
 
 ### El reto
-- Operaciones aleatorias que se van complicando: sumas y restas de dos cifras, multiplicaciones, sumas de tres números, series y combinaciones como `7 × 13 − 25`.
-- Hay que acumular **60 segundos**. Después de cada respuesta correcta el reloj corre 15 s; si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
+- Operaciones aleatorias que se van complicando a lo largo del minuto: sumas, restas, multiplicaciones, sumas de tres números, series y combinaciones.
+- **Dificultad** (en los ajustes de la alarma), según cuántos dígitos tienen los números:
+
+  | Dificultad | Ejemplos |
+  |---|---|
+  | 1 dígito | `7 + 8`, `6 × 9`, `8 × 7 − 4 × 6` |
+  | 2 dígitos (la de siempre) | `47 + 38`, `6 × 23`, `7 × 13 − 25` |
+  | 3 dígitos | `347 + 285`, `6 × 135`, `7 × 124 − 358` |
+
+- Hay que acumular **60 segundos**. Después de cada respuesta correcta el reloj corre 15 s (25 s con 3 dígitos, que tardan más); si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
 - Un error resta 5 s; saltar una operación también.
-- Si te quedas 15 s sin responder, la alarma vuelve a sonar dentro de la app.
+- Si te quedas ese mismo tiempo sin acertar (15 s, o 25 s con 3 dígitos), la alarma vuelve a sonar dentro de la app.
 - Si sales de la app el reto empieza de cero, y si la cierras, la alarma vuelve a sonar en poco más de un minuto.
 
 ### Ajustes bloqueados
-Mientras la alarma está activada, **cambiar la hora, quitar días o desactivarla también exige el reto** (luego quedan desbloqueados 5 minutos). Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora y los días antes de que se bloquee.
+Mientras la alarma está activada, **cambiar la hora, los días o la dificultad, o desactivarla, también exige el reto** (luego quedan desbloqueados 5 minutos). El reto para desbloquear usa la dificultad que ya tenías. Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora, los días y la dificultad antes de que se bloquee.
+
+### Estadísticas
+En **Estadísticas** (pantalla principal) eliges tres cosas, independientes entre sí, y cualquier combinación funciona:
+
+| Opción | Valores |
+|---|---|
+| Estadística | **Hora promedio** de despertar, o **gráfica de línea** de cómo ha cambiado |
+| Por | **Día de la semana** (un promedio o una línea por día) o **toda la semana** |
+| Contando | **Siempre**, **1 año**, **1 mes** o **1 semana** (hacia atrás desde hoy) |
+
+- La hora de despertar es la hora a la que **apagaste la alarma completando el reto**. Las pruebas no cuentan.
+- El promedio maneja bien la medianoche: 23:50 y 0:10 dan 0:00, no mediodía.
+- La gráfica muestra cada despertar en periodos cortos y promedios semanales o mensuales en periodos largos. Mantén el dedo sobre ella para ver cada valor; «Ver datos» muestra la tabla.
+- Se guardan unos 10 años de despertares (antes solo se guardaban los últimos 30).
 
 ### Botón «Probar»
 Programa una alarma de prueba en 1 minuto que se comporta igual que la real (repeticiones incluidas). Bloquea el iPhone para verla como se verá en la mañana.
@@ -149,9 +172,24 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 | Bundle ID, versión | `BUNDLE_ID=… VERSION=… make build` |
 | Repeticiones, duración de la sesión, desbloqueo | `AlarmRules` en [`src/Core/AlarmMath.swift`](src/Core/AlarmMath.swift) |
 | Duración del reto, penalizaciones | `ChallengeRules` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
-| Tipos de operaciones | `ProblemFactory` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
+| Tipos de operaciones de cada dificultad | `ProblemFactory` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
+| Estadísticas | [`src/Core/WakeStatistics.swift`](src/Core/WakeStatistics.swift) |
 | Sonidos | Lista `SOUNDS` en [`scripts/generate_sounds.py`](scripts/generate_sounds.py) (cada uno debe durar menos de 30 s) |
-| Ícono | `Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png` (1024×1024) o [`scripts/make_icon.py`](scripts/make_icon.py) |
+| Ícono | Ver [Ícono](#ícono): `python3 scripts/make_icon.py --use N`, o reemplaza `Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png` (1024×1024) |
+
+## Ícono
+
+Cuatro opciones sobre la misma idea, un amanecer en la ciudad. La app usa la **2 (Despertador)**.
+
+![Las cuatro opciones del ícono](design/icons/preview.png)
+
+Cada opción es un SVG en [`design/icons/`](design/icons) dibujado por [`scripts/make_icon.py`](scripts/make_icon.py). Para cambiar el ícono de la app:
+
+```sh
+python3 scripts/make_icon.py --use 3    # 1 Horizonte, 2 Despertador, 3 Ventana, 4 Isométrica
+```
+
+Necesita Pillow (`pip install pillow`) y Chrome o Chromium para convertir el SVG a PNG (si no lo encuentra, indícalo con `CHROME=/ruta/a/chrome`).
 
 ## Estructura del proyecto
 
@@ -164,6 +202,7 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 ├── tests/          # pruebas de la lógica (make test)
 ├── Resources/      # catálogo de assets con el ícono
 ├── scripts/        # generador de sonidos y del ícono
+├── design/icons/   # las cuatro opciones del ícono (SVG) y su vista previa
 ├── Info.plist
 ├── build.sh        # compilación completa sin proyecto de Xcode
 ├── Makefile
