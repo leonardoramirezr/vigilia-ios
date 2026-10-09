@@ -18,6 +18,7 @@ struct HomeView: View {
                 if let expiration = ProvisioningInfo.expirationDate {
                     signingSection(expiration)
                 }
+                statsSection
                 if !controller.state.history.isEmpty {
                     historySection
                 }
@@ -75,6 +76,8 @@ struct HomeView: View {
                         .disabled(!isEditable)
                 }
             }
+            DifficultyPicker(selection: difficultyBinding)
+                .disabled(!isEditable)
             if controller.isAlarmRinging {
                 Label("La alarma está sonando: no se puede cambiar hasta que completes el reto.", systemImage: "alarm.waves.left.and.right.fill")
                     .foregroundStyle(.orange)
@@ -156,6 +159,28 @@ struct HomeView: View {
         }
     }
 
+    private var statsSection: some View {
+        let week = WakeStatistics.samples(from: controller.state.history, period: .week, now: controller.now, calendar: .current)
+        let average = WakeStatistics.summary(of: week.map(\.minuteOfDay))?.average
+        return Section {
+            NavigationLink {
+                StatsView()
+            } label: {
+                LabeledContent {
+                    if let average {
+                        Text(Clock.text(average))
+                    }
+                } label: {
+                    Label("Estadísticas", systemImage: "chart.xyaxis.line")
+                }
+            }
+        } footer: {
+            if average != nil {
+                Text("Hora promedio a la que apagaste la alarma en los últimos 7 días.")
+            }
+        }
+    }
+
     private var historySection: some View {
         Section("Últimos despertares") {
             ForEach(controller.state.history.prefix(7)) { record in
@@ -176,6 +201,7 @@ struct HomeView: View {
                     Text("• Cada día suena un sonido distinto para que no te acostumbres.")
                     Text("• No existe posponer. Si la detienes desde la pantalla bloqueada o con los botones, vuelve a sonar cada minuto y luego más espaciado durante una hora.")
                     Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz 1 minuto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
+                    Text("• Eliges la dificultad del reto: operaciones con números de 1, 2 o 3 dígitos.")
                     Text("• Si sales de la app durante el reto, empieza de nuevo; si la cierras, la alarma vuelve a sonar en poco más de un minuto.")
                     Text("• Las alarmas viven en iOS (AlarmKit): suenan aunque cierres la app, reinicies el iPhone o esté en silencio o en Concentración.")
                 }
@@ -249,6 +275,35 @@ struct HomeView: View {
         Binding(
             get: { controller.state.settings.weekdays },
             set: { days in controller.updateSettings { $0.weekdays = days } })
+    }
+
+    private var difficultyBinding: Binding<ChallengeDifficulty> {
+        Binding(
+            get: { controller.state.settings.difficulty },
+            set: { controller.setDifficulty($0) })
+    }
+}
+
+struct DifficultyPicker: View {
+    @Binding var selection: ChallengeDifficulty
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Dificultad del reto", systemImage: "brain.head.profile")
+                .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+            Picker("Dificultad del reto", selection: $selection) {
+                ForEach(ChallengeDifficulty.allCases) { difficulty in
+                    Text(difficulty.title).tag(difficulty)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Operaciones como \(selection.example)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

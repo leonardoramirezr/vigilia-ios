@@ -30,11 +30,12 @@ struct AlarmSettings: Equatable {
     var schedule: [Int: AlarmTime] {
         Dictionary(uniqueKeysWithValues: weekdays.map { ($0, time(on: $0)) })
     }
+    var difficulty = ChallengeDifficulty.twoDigits
 }
 
 extension AlarmSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes
+        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes, difficulty
     }
 
     // Every key is optional so that settings saved by older versions keep loading.
@@ -47,6 +48,8 @@ extension AlarmSettings: Codable {
         weekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .weekdays) ?? weekdays
         sameTimeEveryDay = try container.decodeIfPresent(Bool.self, forKey: .sameTimeEveryDay) ?? sameTimeEveryDay
         dayTimes = try container.decodeIfPresent([Int: AlarmTime].self, forKey: .dayTimes) ?? dayTimes
+        // An unknown level (saved by a newer version) must not lose the alarm.
+        difficulty = (try? container.decodeIfPresent(ChallengeDifficulty.self, forKey: .difficulty)) ?? difficulty
     }
 }
 
@@ -109,6 +112,25 @@ struct VigiliaState: Equatable {
         if completedOccurrences.count > 60 {
             completedOccurrences.removeFirst(completedOccurrences.count - 60)
         }
+    }
+
+    /// Newest first. Real wake-ups are kept for the statistics; tests only show up
+    /// in the list on the home screen.
+    mutating func recordWake(_ record: WakeRecord) {
+        var kept: [WakeRecord] = []
+        var wakes = 0
+        var tests = 0
+        for entry in [record] + history {
+            if entry.isTest {
+                tests += 1
+                if tests > AlarmRules.testHistoryLimit { continue }
+            } else {
+                wakes += 1
+                if wakes > AlarmRules.historyLimit { continue }
+            }
+            kept.append(entry)
+        }
+        history = kept
     }
 
     /// Applies a settings change unless an alarm is going off (`isAlerting`) or its

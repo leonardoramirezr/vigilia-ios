@@ -16,6 +16,8 @@ struct LogicTests {
         testSessions()
         testSettingsWhileRinging()
         testStoredData()
+        testHistory()
+        testStatistics()
         print("\(checks) checks, \(failures) failures")
         exit(failures == 0 ? 0 : 1)
     }
@@ -106,13 +108,24 @@ struct LogicTests {
         return result
     }
 
+    /// Every number shown in the prompt (not the answer).
+    static func operands(_ prompt: String) -> [Int] {
+        prompt.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+    }
+
     static func testProblems() {
         var rng = SeededRandom(seed: 42)
-        for level in 0...4 {
-            for _ in 0..<3000 {
-                let problem = ProblemFactory.make(level: level, using: &rng)
-                expect(evaluate(problem.prompt) == problem.answer, "wrong answer for \"\(problem.prompt)\": \(problem.answer)")
-                expect(problem.answer >= 0 && problem.answer < 1000, "answer out of range: \(problem.prompt)")
+        for difficulty in ChallengeDifficulty.allCases {
+            let digits = difficulty.rawValue
+            for level in 0...4 {
+                for _ in 0..<3000 {
+                    let problem = ProblemFactory.make(level: level, difficulty: difficulty, using: &rng)
+                    let numbers = operands(problem.prompt)
+                    expect(evaluate(problem.prompt) == problem.answer, "wrong answer for \"\(problem.prompt)\": \(problem.answer)")
+                    expect(problem.answer >= 0 && problem.answer <= 9999, "answer does not fit the keypad: \(problem.prompt)")
+                    expect(numbers.allSatisfy { $0 > 0 && String($0).count <= digits }, "\(difficulty) has a longer number: \(problem.prompt)")
+                    expect(numbers.contains { String($0).count == digits }, "\(difficulty) has no \(digits)-digit number: \(problem.prompt)")
+                }
             }
         }
     }
@@ -154,6 +167,20 @@ struct LogicTests {
 
         state.restart(now: now)
         expect(state.progress == 0 && !state.isComplete && state.lastCorrectAt == nil, "restart starts over")
+
+        for difficulty in ChallengeDifficulty.allCases {
+            var hard = ChallengeState(rules: ChallengeRules(difficulty: difficulty), now: start, seed: 9)
+            var problems = Set<String>()
+            for step in 0..<40 {
+                problems.insert(hard.problem.prompt)
+                expect(operands(hard.problem.prompt).allSatisfy { String($0).count <= difficulty.rawValue },
+                       "the challenge uses the chosen difficulty: \(hard.problem.prompt)")
+                _ = hard.submit(String(hard.problem.answer), now: start.addingTimeInterval(Double(step)))
+            }
+            expect(problems.count > 20, "\(difficulty) problems vary")
+        }
+        expect(ChallengeRules(difficulty: .threeDigits).graceSeconds > ChallengeRules().graceSeconds,
+               "three-digit operations get more time per answer")
     }
 
     static func schedule(_ weekdays: Set<Int>, _ hour: Int, _ minute: Int) -> [Int: AlarmTime] {
@@ -302,8 +329,118 @@ struct LogicTests {
         expect(fresh.activeSession(at: alarm.addingTimeInterval(21 * 60), calendar: calendar)?.isTest == true, "test session")
         expect(fresh.activeSession(at: alarm.addingTimeInterval(31 * 60), calendar: calendar) == nil, "test session expires")
 
+        state.settings.difficulty = .threeDigits
         let data = try! JSONEncoder().encode(state)
         expect(try! JSONDecoder().decode(VigiliaState.self, from: data) == state, "state survives a round trip")
         expect(try! JSONDecoder().decode(VigiliaState.self, from: Data("{}".utf8)) == VigiliaState(), "missing keys use defaults")
+
+        let saved = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2,3]}}"#.utf8)
+        let old = try? JSONDecoder().decode(VigiliaState.self, from: saved)
+        expect(old?.settings == AlarmSettings(isEnabled: true, hour: 6, minute: 30, weekdays: [2, 3], difficulty: .twoDigits),
+               "settings saved before the difficulty existed keep loading")
+        let future = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2],"difficulty":9}}"#.utf8)
+        expect((try? JSONDecoder().decode(VigiliaState.self, from: future))?.settings.isEnabled == true,
+               "an unknown difficulty does not lose the alarm")
+    }
+
+    static func testHistory() {
+        var state = VigiliaState()
+        let start = date("2026-01-01T07:00:00")
+        for day in 0..<(AlarmRules.historyLimit + 5) {
+            let occurrence = start.addingTimeInterval(Double(day) * 86_400)
+            state.recordWake(WakeRecord(occurrence: occurrence, completedAt: occurrence.addingTimeInterval(120),
+                                        solved: 10, mistakes: 0, isTest: false))
+            if day % 100 == 0 {
+                state.recordWake(WakeRecord(occurrence: occurrence, completedAt: occurrence.addingTimeInterval(180),
+                                            solved: 10, mistakes: 0, isTest: true))
+            }
+        }
+        let wakes = state.history.filter { !$0.isTest }
+        expect(wakes.count == AlarmRules.historyLimit, "keeps years of wake-ups for the statistics")
+        expect(state.history.filter(\.isTest).count == AlarmRules.testHistoryLimit, "keeps only the latest tests")
+        expect(wakes.first?.occurrence == start.addingTimeInterval(Double(AlarmRules.historyLimit + 4) * 86_400), "newest first")
+        expect(zip(state.history, state.history.dropFirst()).allSatisfy { $0.completedAt >= $1.completedAt }, "history stays in order")
+    }
+
+    static func testStatistics() {
+        func close(_ value: Double?, _ expected: Double) -> Bool {
+            value.map { abs($0 - expected) < 0.01 } ?? false
+        }
+
+        expect(close(WakeStatistics.summary(of: [360, 360, 540])?.average, 420), "close times average as plain numbers")
+        let midnight = WakeStatistics.summary(of: [1430, 10])?.average
+        expect(close(midnight, 0) || close(midnight, 1440), "23:50 and 0:10 average to midnight, not noon")
+        let late = WakeStatistics.summary(of: [1430, 10, 20])
+        expect(close(late?.average, 20.0 / 3), "the average works across midnight")
+        expect(close(late?.earliest, 1430) && close(late?.latest, 20), "earliest and latest work across midnight")
+        expect(WakeStatistics.summary(of: []) == nil, "no wake-ups, no average")
+
+        // 100 days of 7:00 alarms, ending on Friday 2026-10-09: turned off at 7:05 on
+        // weekdays and at 8:30 on weekends. Plus a test, which never counts.
+        let now = date("2026-10-09T12:00:00")
+        var history: [WakeRecord] = []
+        for back in 0..<100 {
+            let occurrence = calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T07:00:00"))!
+            let weekend = [1, 7].contains(calendar.component(.weekday, from: occurrence))
+            history.append(WakeRecord(occurrence: occurrence, completedAt: occurrence.addingTimeInterval(weekend ? 90 * 60 : 5 * 60),
+                                      solved: 10, mistakes: 1, isTest: false))
+        }
+        history.append(WakeRecord(occurrence: date("2026-10-08T15:00:00"), completedAt: date("2026-10-08T15:02:00"),
+                                  solved: 4, mistakes: 0, isTest: true))
+
+        func samples(_ period: StatsPeriod) -> [WakeSample] {
+            WakeStatistics.samples(from: history, period: period, now: now, calendar: calendar)
+        }
+        expect(samples(.week).count == 7, "a week counts 7 wake-ups (got \(samples(.week).count))")
+        expect(samples(.month).count == 30, "a month counts 30 wake-ups (got \(samples(.month).count))")
+        expect(samples(.year).count == 100 && samples(.always).count == 100, "a year and always count everything")
+        expect(samples(.always).allSatisfy { $0.minuteOfDay == 425 || $0.minuteOfDay == 510 }, "the wake-up time is when the alarm was turned off")
+
+        let week = WakeStatistics.summary(of: samples(.week).map(\.minuteOfDay))
+        expect(close(week?.average, (5 * 425 + 2 * 510) / 7.0), "whole-week average")
+        expect(week?.count == 7 && close(week?.earliest, 425) && close(week?.latest, 510), "whole-week spread")
+
+        let byDay = WakeStatistics.summaryByWeekday(samples(.always))
+        expect(byDay.count == 7, "every weekday has an average")
+        expect((2...6).allSatisfy { close(byDay[$0]?.average, 425) }, "weekday average")
+        expect(close(byDay[1]?.average, 510) && close(byDay[7]?.average, 510), "weekend average")
+        expect(byDay.values.reduce(0) { $0 + $1.count } == 100, "every wake-up belongs to one weekday")
+
+        let daily = WakeStatistics.trend(of: samples(.month), grouping: .wholeWeek, calendar: calendar)
+        expect(daily.resolution == .day && daily.points.count == 30, "a month shows every wake-up")
+        expect(zip(daily.points, daily.points.dropFirst()).allSatisfy { $0.date < $1.date }, "points are in order")
+
+        let weekly = WakeStatistics.trend(of: samples(.always), grouping: .wholeWeek, calendar: calendar)
+        expect(weekly.resolution == .week, "longer periods show weekly averages")
+        expect(weekly.points.count >= 14 && weekly.points.count <= 16, "about one point per week (got \(weekly.points.count))")
+        expect(weekly.points.reduce(0) { $0 + $1.count } == 100, "weekly points cover every wake-up")
+        expect(weekly.points.allSatisfy { $0.weekday == nil && $0.minute >= 425 && $0.minute <= 510 }, "weekly averages")
+
+        let perDay = WakeStatistics.trend(of: samples(.always), grouping: .byWeekday, calendar: calendar)
+        expect(Set(perDay.points.compactMap(\.weekday)) == Set(1...7), "one line per weekday")
+        expect(perDay.points.allSatisfy { point in
+            close(point.minute, [1, 7].contains(point.weekday!) ? 510 : 425)
+        }, "each weekday line keeps its own times")
+
+        let years = (0..<500).map { back in
+            WakeSample(day: calendar.date(byAdding: .day, value: -back, to: date("2026-10-09T00:00:00"))!, weekday: 1, minuteOfDay: 420)
+        }
+        let monthly = WakeStatistics.trend(of: years.reversed(), grouping: .wholeWeek, calendar: calendar)
+        expect(monthly.resolution == .month && monthly.points.count == 18, "years show monthly averages (got \(monthly.points.count))")
+
+        let night = [
+            WakeSample(day: date("2026-10-01T00:00:00"), weekday: 5, minuteOfDay: 1430),
+            WakeSample(day: date("2026-10-02T00:00:00"), weekday: 6, minuteOfDay: 10),
+        ]
+        let nightTrend = WakeStatistics.trend(of: night, grouping: .wholeWeek, calendar: calendar).points
+        expect(nightTrend.count == 2 && abs(nightTrend[0].minute - nightTrend[1].minute) == 20, "the chart does not jump at midnight")
+        let nightAverage = WakeStatistics.trend(of: night, grouping: .wholeWeek, calendar: calendar).average
+        expect(close(nightAverage, 0) || close(nightAverage, 1440), "the chart's average sits between the points")
+        expect(close(weekly.average, (byDay[1]!.average * 28 + 425 * 72) / 100), "the chart's average covers every wake-up")
+
+        let axis = WakeStatistics.axis(for: [401, 472])
+        expect(axis == (390, 510, 30), "axis in half hours around the data (got \(axis))")
+        let single = WakeStatistics.axis(for: [420])
+        expect(single == (405, 435, 15), "a single point still gets an axis (got \(single))")
     }
 }

@@ -16,6 +16,7 @@ struct ChallengeRequest: Identifiable, Equatable {
 
     let id = UUID()
     let purpose: Purpose
+    let difficulty: ChallengeDifficulty
 }
 
 struct ChallengeSummary {
@@ -144,7 +145,9 @@ final class AlarmController: ObservableObject {
         if case .wake(let occurrence, _)? = challenge?.purpose, occurrence.isSameInstant(as: session.occurrence) {
             return
         }
-        challenge = ChallengeRequest(purpose: .wake(occurrence: session.occurrence, isTest: session.isTest))
+        challenge = ChallengeRequest(
+            purpose: .wake(occurrence: session.occurrence, isTest: session.isTest),
+            difficulty: state.settings.difficulty)
     }
 
     // MARK: - Settings
@@ -172,8 +175,18 @@ final class AlarmController: ObservableObject {
         applySettings(change)
     }
 
+    /// Only the challenge changes, so the alarms in AlarmKit stay as they are. Like
+    /// any other setting it can't change while an alarm rings.
+    func setDifficulty(_ difficulty: ChallengeDifficulty) {
+        now = Date()
+        refreshAlerting()
+        guard !isSettingsLocked, !isAlarmRinging, state.settings.difficulty != difficulty else { return }
+        state.settings.difficulty = difficulty
+        save()
+    }
+
     func requestUnlock() {
-        challenge = ChallengeRequest(purpose: .unlockSettings)
+        challenge = ChallengeRequest(purpose: .unlockSettings, difficulty: state.settings.difficulty)
     }
 
     /// Ignored while an alarm rings (see `VigiliaState.changeSettings`): only the
@@ -311,10 +324,8 @@ final class AlarmController: ObservableObject {
             save()
         case .wake(let occurrence, let isTest):
             state.markCompleted(occurrence)
-            state.history.insert(
-                WakeRecord(occurrence: occurrence, completedAt: now, solved: summary.solved, mistakes: summary.mistakes, isTest: isTest),
-                at: 0)
-            state.history = Array(state.history.prefix(30))
+            state.recordWake(
+                WakeRecord(occurrence: occurrence, completedAt: now, solved: summary.solved, mistakes: summary.mistakes, isTest: isTest))
             save()
             enqueue {
                 self.stopRingingAlarms()

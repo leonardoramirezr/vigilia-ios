@@ -5,11 +5,87 @@ struct MathProblem: Equatable {
     let answer: Int
 }
 
+/// How many digits the numbers in the challenge have. Answers can be longer
+/// (6 × 9 = 54 is a one-digit operation).
+enum ChallengeDifficulty: Int, Codable, CaseIterable, Identifiable {
+    case oneDigit = 1
+    case twoDigits = 2
+    case threeDigits = 3
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .oneDigit: return "1 dígito"
+        case .twoDigits: return "2 dígitos"
+        case .threeDigits: return "3 dígitos"
+        }
+    }
+
+    var example: String {
+        switch self {
+        case .oneDigit: return "7 + 8, 6 × 9, 8 × 7 − 4 × 6"
+        case .twoDigits: return "47 + 38, 6 × 23, 7 × 13 − 25"
+        case .threeDigits: return "347 + 285, 6 × 135, 7 × 124 − 358"
+        }
+    }
+}
+
 enum ProblemFactory {
-    /// Levels 0…4. Higher levels mix more operations and bigger numbers.
-    /// Every answer is a non-negative integer so a plain numeric keypad is enough.
-    static func make<R: RandomNumberGenerator>(level: Int, using rng: inout R) -> MathProblem {
-        switch max(0, min(4, level)) {
+    /// Levels 0…4. Higher levels mix more operations; the difficulty sets how many
+    /// digits the numbers have. Every answer is a non-negative integer so a plain
+    /// numeric keypad is enough.
+    static func make<R: RandomNumberGenerator>(level: Int, difficulty: ChallengeDifficulty, using rng: inout R) -> MathProblem {
+        let level = max(0, min(4, level))
+        switch difficulty {
+        case .oneDigit: return oneDigit(level: level, using: &rng)
+        case .twoDigits: return twoDigits(level: level, using: &rng)
+        case .threeDigits: return threeDigits(level: level, using: &rng)
+        }
+    }
+
+    private static func oneDigit<R: RandomNumberGenerator>(level: Int, using rng: inout R) -> MathProblem {
+        switch level {
+        case 0:
+            let a = Int.random(in: 2...9, using: &rng)
+            let b = Int.random(in: 2...9, using: &rng)
+            return MathProblem(prompt: "\(a) + \(b) = ?", answer: a + b)
+        case 1:
+            let a = Int.random(in: 3...9, using: &rng)
+            let b = Int.random(in: 3...9, using: &rng)
+            return MathProblem(prompt: "\(a) × \(b) = ?", answer: a * b)
+        case 2:
+            let a = Int.random(in: 2...9, using: &rng)
+            let b = Int.random(in: 2...9, using: &rng)
+            let c = Int.random(in: 2...9, using: &rng)
+            return MathProblem(prompt: "\(a) + \(b) + \(c) = ?", answer: a + b + c)
+        case 3:
+            // a × b is at least 9, so subtracting c never goes below zero.
+            let a = Int.random(in: 3...9, using: &rng)
+            let b = Int.random(in: 3...9, using: &rng)
+            let c = Int.random(in: 2...9, using: &rng)
+            if Bool.random(using: &rng) {
+                return MathProblem(prompt: "\(a) × \(b) + \(c) = ?", answer: a * b + c)
+            }
+            return MathProblem(prompt: "\(a) × \(b) − \(c) = ?", answer: a * b - c)
+        default:
+            var a = Int.random(in: 2...9, using: &rng)
+            var b = Int.random(in: 2...9, using: &rng)
+            var c = Int.random(in: 2...9, using: &rng)
+            var d = Int.random(in: 2...9, using: &rng)
+            if Bool.random(using: &rng) {
+                return MathProblem(prompt: "\(a) × \(b) + \(c) × \(d) = ?", answer: a * b + c * d)
+            }
+            if a * b < c * d {
+                swap(&a, &c)
+                swap(&b, &d)
+            }
+            return MathProblem(prompt: "\(a) × \(b) − \(c) × \(d) = ?", answer: a * b - c * d)
+        }
+    }
+
+    private static func twoDigits<R: RandomNumberGenerator>(level: Int, using rng: inout R) -> MathProblem {
+        switch level {
         case 0:
             let a = Int.random(in: 13...68, using: &rng)
             let b = Int.random(in: 14...49, using: &rng)
@@ -36,18 +112,59 @@ enum ProblemFactory {
         default:
             let a = Int.random(in: 3...9, using: &rng)
             let b = Int.random(in: 6...14, using: &rng)
-            let c = Int.random(in: 5...(a * b - 1), using: &rng)
+            let c = Int.random(in: 10...min(99, a * b - 1), using: &rng)
+            return MathProblem(prompt: "\(a) × \(b) − \(c) = ?", answer: a * b - c)
+        }
+    }
+
+    private static func threeDigits<R: RandomNumberGenerator>(level: Int, using rng: inout R) -> MathProblem {
+        switch level {
+        case 0:
+            let a = Int.random(in: 125...689, using: &rng)
+            let b = Int.random(in: 114...499, using: &rng)
+            return MathProblem(prompt: "\(a) + \(b) = ?", answer: a + b)
+        case 1:
+            let a = Int.random(in: 420...999, using: &rng)
+            let b = Int.random(in: 113...(a - 110), using: &rng)
+            return MathProblem(prompt: "\(a) − \(b) = ?", answer: a - b)
+        case 2:
+            let a = Int.random(in: 3...9, using: &rng)
+            let b = Int.random(in: 112...249, using: &rng)
+            return MathProblem(prompt: "\(a) × \(b) = ?", answer: a * b)
+        case 3:
+            if Bool.random(using: &rng) {
+                let a = Int.random(in: 112...499, using: &rng)
+                let b = Int.random(in: 112...399, using: &rng)
+                let c = Int.random(in: 106...299, using: &rng)
+                return MathProblem(prompt: "\(a) + \(b) + \(c) = ?", answer: a + b + c)
+            }
+            let start = Int.random(in: 102...420, using: &rng)
+            let step = Int.random(in: 13...75, using: &rng)
+            let terms = (0..<4).map { String(start + $0 * step) }
+            return MathProblem(prompt: terms.joined(separator: ", ") + ", ?", answer: start + 4 * step)
+        default:
+            let a = Int.random(in: 3...9, using: &rng)
+            let b = Int.random(in: 102...199, using: &rng)
+            let c = Int.random(in: 100...min(999, a * b - 1), using: &rng)
             return MathProblem(prompt: "\(a) × \(b) − \(c) = ?", answer: a * b - c)
         }
     }
 }
 
 struct ChallengeRules: Equatable {
+    var difficulty: ChallengeDifficulty
     var requiredSeconds: TimeInterval = 60
     /// After each correct answer the clock keeps running this long, then pauses.
-    var graceSeconds: TimeInterval = 15
+    var graceSeconds: TimeInterval
     var wrongPenalty: TimeInterval = 5
     var skipPenalty: TimeInterval = 5
+
+    init(difficulty: ChallengeDifficulty = .twoDigits) {
+        self.difficulty = difficulty
+        // Three-digit operations take longer to work out, and the alarm comes back
+        // inside the app once this much time passes without a correct answer.
+        graceSeconds = difficulty == .threeDigits ? 25 : 15
+    }
 }
 
 /// One minute of mental arithmetic. The clock only advances while the person keeps
@@ -73,7 +190,7 @@ struct ChallengeState {
         self.rules = rules
         startedAt = now
         lastTick = now
-        problem = ProblemFactory.make(level: 0, using: &generator)
+        problem = ProblemFactory.make(level: 0, difficulty: rules.difficulty, using: &generator)
         rng = generator
     }
 
@@ -133,9 +250,9 @@ struct ChallengeState {
 
     private mutating func nextProblem() {
         let level = max(0, Int(fraction * 5) - Int.random(in: 0...1, using: &rng))
-        var candidate = ProblemFactory.make(level: level, using: &rng)
+        var candidate = ProblemFactory.make(level: level, difficulty: rules.difficulty, using: &rng)
         if candidate.prompt == problem.prompt {
-            candidate = ProblemFactory.make(level: level, using: &rng)
+            candidate = ProblemFactory.make(level: level, difficulty: rules.difficulty, using: &rng)
         }
         problem = candidate
     }
