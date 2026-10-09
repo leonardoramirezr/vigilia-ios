@@ -1,0 +1,64 @@
+name: Build iOS app
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun swiftc --version
+
+      - name: Logic tests
+        run: make test
+
+      - name: Build unsigned IPA
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: make build
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v6
+        with:
+          name: Vigilia-ipa
+          path: build/Vigilia.ipa
+          if-no-files-found: error
+
+      # Stable download link for the newest build of main:
+      # https://github.com/<owner>/<repo>/releases/download/latest/Vigilia.ipa
+      - name: Publish "latest" pre-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" 2>/dev/null || true
+          gh release create latest build/Vigilia.ipa \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "Vigilia (última versión de main)" \
+            --notes "IPA sin firmar compilada automáticamente desde ${GITHUB_SHA::7}. Instálala con Sideloadly, AltStore o SideStore siguiendo el README."
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" build/Vigilia.ipa --title "Vigilia ${GITHUB_REF_NAME}" --generate-notes
