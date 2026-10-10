@@ -15,6 +15,7 @@ struct LogicTests {
         testDaySchedules()
         testSessions()
         testSettingsWhileRinging()
+        testEarlyDismissal()
         testStoredData()
         testHistory()
         testStatistics()
@@ -282,6 +283,83 @@ struct LogicTests {
                "settings wait for the test alarm's challenge too")
         expect(test.changeSettings(at: alarm.addingTimeInterval(-120), isAlerting: false, calendar: calendar) { $0.isEnabled = true },
                "allowed before the test rings")
+    }
+
+    /// 2026-10-09 is a Friday (weekday 6).
+    static func testEarlyDismissal() {
+        let alarm = date("2026-10-09T07:00:00")
+        let monday = date("2026-10-12T07:00:00")
+        let nextFriday = date("2026-10-16T07:00:00")
+        var state = VigiliaState()
+        state.settings = AlarmSettings(isEnabled: true, hour: 7, minute: 0, weekdays: [2, 3, 4, 5, 6])
+        state.armedSince = date("2026-10-08T22:00:00")
+
+        expect(state.earlyDismissibleOccurrence(at: date("2026-10-09T03:59:00"), calendar: calendar) == nil,
+               "more than 3 hours before it can't be turned off")
+        expect(state.earlyDismissibleOccurrence(at: date("2026-10-09T04:00:00"), calendar: calendar) == alarm,
+               "exactly 3 hours before it can")
+        expect(state.earlyDismissibleOccurrence(at: date("2026-10-09T06:59:00"), calendar: calendar) == alarm,
+               "a minute before it can")
+        expect(state.earlyDismissibleOccurrence(at: date("2026-10-09T06:59:50"), calendar: calendar) == nil,
+               "not when it is about to ring")
+        expect(state.earlyDismissibleOccurrence(at: date("2026-10-09T07:30:00"), calendar: calendar) == nil,
+               "not while its challenge is pending")
+        expect(state.mainAlarmPlans(after: date("2026-10-09T06:00:00"), calendar: calendar)[6]
+               == MainAlarmPlan(weekday: 6, time: AlarmTime(hour: 7, minute: 0), fireDate: alarm),
+               "a weekly alarm before turning it off")
+
+        var disabled = state
+        disabled.settings.isEnabled = false
+        expect(disabled.earlyDismissibleOccurrence(at: date("2026-10-09T06:00:00"), calendar: calendar) == nil,
+               "nothing to turn off when the alarm is off")
+        expect(disabled.mainAlarmPlans(after: date("2026-10-09T06:00:00"), calendar: calendar).isEmpty, "no alarms when it is off")
+
+        var pendingTest = state
+        pendingTest.test = TestRecord(id: UUID(), occurrence: date("2026-10-09T05:58:00"))
+        expect(pendingTest.earlyDismissibleOccurrence(at: date("2026-10-09T06:00:00"), calendar: calendar) == nil,
+               "not while the test alarm waits for its challenge")
+
+        // Challenge done at 6:00 for the 7:00 alarm.
+        let before = date("2026-10-09T06:00:00")
+        state.markCompleted(alarm)
+        expect(state.nextOccurrence(after: before, calendar: calendar) == monday, "the next alarm is now Monday's")
+        expect(state.dismissedOccurrence(after: before, calendar: calendar) == alarm, "today's alarm shows as turned off")
+        expect(state.earlyDismissibleOccurrence(at: before, calendar: calendar) == nil, "Monday is too far away to turn off")
+        let plans = state.mainAlarmPlans(after: before, calendar: calendar)
+        expect(plans[6] == MainAlarmPlan(weekday: 6, time: AlarmTime(hour: 7, minute: 0), fireDate: nextFriday, skipped: alarm),
+               "Fridays become a one-shot alarm next Friday")
+        expect(plans[2]?.fireDate == monday && plans[2]?.isOneShot == false, "the other days stay weekly")
+        expect(state.activeSession(at: alarm.addingTimeInterval(30), calendar: calendar) == nil, "it doesn't start a session")
+        expect(state.activeSession(at: alarm.addingTimeInterval(30 * 60), calendar: calendar) == nil, "nor later")
+
+        let after = date("2026-10-09T07:30:00")
+        expect(state.mainAlarmPlans(after: after, calendar: calendar)[6]
+               == MainAlarmPlan(weekday: 6, time: AlarmTime(hour: 7, minute: 0), fireDate: nextFriday),
+               "once it has passed, Fridays are weekly again")
+        expect(state.dismissedOccurrence(after: after, calendar: calendar) == nil, "nothing turned off ahead anymore")
+        expect(state.activeSession(at: nextFriday.addingTimeInterval(30), calendar: calendar)?.occurrence == nextFriday,
+               "next Friday rings as usual")
+        expect(state.activeSession(at: monday.addingTimeInterval(30), calendar: calendar)?.occurrence == monday,
+               "Monday rings as usual")
+
+        var changed = state
+        expect(changed.changeSettings(at: before, isAlerting: false, calendar: calendar) { $0.minute = 5 },
+               "the time can still change after turning it off")
+        expect(changed.nextOccurrence(after: before, calendar: calendar) == date("2026-10-09T07:05:00"),
+               "a new time rings: only the 7:00 alarm was turned off")
+
+        var perDay = VigiliaState()
+        perDay.settings = AlarmSettings(isEnabled: true, hour: 7, minute: 0, weekdays: [6, 7], sameTimeEveryDay: false,
+                                        dayTimes: [6: AlarmTime(hour: 23, minute: 30), 7: AlarmTime(hour: 0, minute: 30)])
+        perDay.markCompleted(date("2026-10-09T23:30:00"))
+        expect(perDay.earlyDismissibleOccurrence(at: date("2026-10-09T23:00:00"), calendar: calendar) == date("2026-10-10T00:30:00"),
+               "the alarm after the one turned off can be turned off too when it is close")
+
+        let old = Data(#"{"mains":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","weekday":2,"hour":7,"minute":0,"nextFire":0}]}"#.utf8)
+        let decoded = try? JSONDecoder().decode(VigiliaState.self, from: old)
+        expect(decoded?.mains.first?.isOneShot == nil && decoded?.mains.count == 1, "alarms saved before one-shots keep loading")
+        state.mains = [MainAlarmRecord(id: UUID(), weekday: 6, hour: 7, minute: 0, sound: nil, nextFire: nextFriday, isOneShot: true)]
+        expect(try! JSONDecoder().decode(VigiliaState.self, from: JSONEncoder().encode(state)) == state, "one-shot alarms survive a round trip")
     }
 
     static func testStoredData() {

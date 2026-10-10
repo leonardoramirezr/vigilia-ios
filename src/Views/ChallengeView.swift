@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// One minute of mental arithmetic. It is the only way to turn the alarm off (or
-/// to unlock the settings while the alarm is enabled).
+/// One minute of mental arithmetic. It is the only way to turn the alarm off (also
+/// in advance, before it rings) or to unlock the settings while the alarm is enabled.
 struct ChallengeView: View {
     let request: ChallengeRequest
 
@@ -98,7 +98,7 @@ struct ChallengeView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(occurrence == nil ? "Reto para desbloquear" : "Reto para apagar la alarma")
+                Text(title)
                     .font(.headline)
                 Text("1 minuto de cálculo mental, operaciones de \(request.difficulty.title). El tiempo solo corre mientras respondes bien.")
                     .font(.caption)
@@ -158,14 +158,12 @@ struct ChallengeView: View {
 
     private var successView: some View {
         VStack(spacing: 20) {
-            Image(systemName: occurrence == nil ? "lock.open.fill" : "sun.max.fill")
+            Image(systemName: success.icon)
                 .font(.system(size: 72))
                 .foregroundStyle(.yellow)
-            Text(occurrence == nil ? "Ajustes desbloqueados" : "¡Buenos días!")
+            Text(success.title)
                 .font(.largeTitle.bold())
-            Text(occurrence == nil
-                 ? "Tienes 5 minutos para cambiar o desactivar la alarma."
-                 : "Alarma apagada. Resolviste \(challenge.solved) operaciones con \(challenge.mistakes) errores.")
+            Text(success.message)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button {
@@ -180,6 +178,27 @@ struct ChallengeView: View {
         }
         .padding(32)
         .foregroundStyle(.white)
+    }
+
+    private var title: String {
+        switch request.purpose {
+        case .wake: return "Reto para apagar la alarma"
+        case .unlockSettings: return "Reto para desbloquear"
+        case .dismissInAdvance: return "Reto para desactivar la alarma"
+        }
+    }
+
+    private var success: (icon: String, title: String, message: String) {
+        switch request.purpose {
+        case .wake:
+            return ("sun.max.fill", "¡Buenos días!",
+                    "Alarma apagada. Resolviste \(challenge.solved) operaciones con \(challenge.mistakes) errores.")
+        case .unlockSettings:
+            return ("lock.open.fill", "Ajustes desbloqueados", "Tienes 5 minutos para cambiar o desactivar la alarma.")
+        case .dismissInAdvance(let occurrence):
+            return ("moon.zzz.fill", "Alarma desactivada",
+                    "Ya no sonará el \(occurrence.formatted(.dateTime.weekday(.wide))) a las \(occurrence.formatted(date: .omitted, time: .shortened)). Las siguientes alarmas sonarán como siempre.")
+        }
     }
 
     private var answerBackground: Color {

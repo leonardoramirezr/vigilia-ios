@@ -113,14 +113,26 @@ struct HomeView: View {
                     LabeledContent("Sonido de ese día", value: sound.title)
                     previewButton(for: sound)
                 }
+                if controller.earlyDismissibleOccurrence != nil {
+                    Button {
+                        controller.requestEarlyDismissal()
+                    } label: {
+                        Label("Desactivarla con el reto de 1 minuto", systemImage: "moon.zzz.fill")
+                    }
+                }
             } else {
                 Text("No hay ninguna alarma programada.")
                     .foregroundStyle(.secondary)
             }
+            if let dismissed = controller.dismissedOccurrence {
+                LabeledContent("Desactivada") {
+                    Text(dismissed.formatted(.dateTime.weekday(.wide).hour().minute()))
+                }
+            }
         } header: {
             Text("Próxima alarma")
         } footer: {
-            Text("Hay \(controller.sounds.sounds.count) sonidos y cada día suena uno distinto; no se repite ninguno hasta haberlos usado todos.")
+            Text("Desde 3 horas antes puedes desactivarla resolviendo el mismo reto que harías al sonar; solo se desactiva esa vez. Hay \(controller.sounds.sounds.count) sonidos y cada día suena uno distinto; no se repite ninguno hasta haberlos usado todos.")
         }
     }
 
@@ -202,6 +214,7 @@ struct HomeView: View {
                     Text("• No existe posponer. Si la detienes desde la pantalla bloqueada o con los botones, vuelve a sonar cada minuto y luego más espaciado durante una hora.")
                     Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz 1 minuto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
                     Text("• Eliges la dificultad del reto: operaciones con números de 1, 2 o 3 dígitos.")
+                    Text("• Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez; las siguientes suenan como siempre.")
                     Text("• Si sales de la app durante el reto, empieza de nuevo; si la cierras, la alarma vuelve a sonar en poco más de un minuto.")
                     Text("• Las alarmas viven en iOS (AlarmKit): suenan aunque cierres la app, reinicies el iPhone o esté en silencio o en Concentración.")
                 }

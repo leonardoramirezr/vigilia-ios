@@ -13,6 +13,8 @@ enum AlarmRules {
     /// The alarm may fire a moment before the app's clock says it should.
     static let earlyTolerance: TimeInterval = 20
     static let settingsUnlockDuration: TimeInterval = 5 * 60
+    /// How long before an alarm it can be turned off in advance with the challenge.
+    static let earlyDismissWindow: TimeInterval = 3 * 60 * 60
     static let testDelay: TimeInterval = 60
     static let testRetryMinutes = [1, 2, 3]
     static let testSessionWindow: TimeInterval = 10 * 60
