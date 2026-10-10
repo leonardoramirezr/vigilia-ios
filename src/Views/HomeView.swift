@@ -78,6 +78,8 @@ struct HomeView: View {
             }
             DifficultyPicker(selection: difficultyBinding)
                 .disabled(!isEditable)
+            DurationPicker(selection: durationBinding)
+                .disabled(!isEditable)
             if controller.isAlarmRinging {
                 Label("La alarma está sonando: no se puede cambiar hasta que completes el reto.", systemImage: "alarm.waves.left.and.right.fill")
                     .foregroundStyle(.orange)
@@ -85,7 +87,7 @@ struct HomeView: View {
                 Button {
                     controller.requestUnlock()
                 } label: {
-                    Label("Desbloquear con el reto de 1 minuto", systemImage: "lock.fill")
+                    Label("Desbloquear con el reto de \(settings.challengeDuration.text)", systemImage: "lock.fill")
                 }
             } else if controller.state.settings.isEnabled, let until = controller.state.settingsUnlockedUntil, until > controller.now {
                 Label("Desbloqueada hasta las \(until.formatted(date: .omitted, time: .shortened))", systemImage: "lock.open.fill")
@@ -117,7 +119,7 @@ struct HomeView: View {
                     Button {
                         controller.requestEarlyDismissal()
                     } label: {
-                        Label("Desactivarla con el reto de 1 minuto", systemImage: "moon.zzz.fill")
+                        Label("Desactivarla con el reto de \(controller.state.settings.challengeDuration.text)", systemImage: "moon.zzz.fill")
                     }
                 }
             } else {
@@ -212,8 +214,8 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("• Cada día suena un sonido distinto para que no te acostumbres.")
                     Text("• No existe posponer. Si la detienes desde la pantalla bloqueada o con los botones, vuelve a sonar cada minuto y luego más espaciado durante una hora.")
-                    Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz 1 minuto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
-                    Text("• Eliges la dificultad del reto: operaciones con números de 1, 2 o 3 dígitos.")
+                    Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz el reto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
+                    Text("• Eliges la dificultad del reto (operaciones con números de 1, 2 o 3 dígitos) y cuánto dura: 1, 2 o 3 minutos.")
                     Text("• Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez; las siguientes suenan como siempre.")
                     Text("• Si sales de la app durante el reto, empieza de nuevo; si la cierras, la alarma vuelve a sonar en poco más de un minuto.")
                     Text("• Las alarmas viven en iOS (AlarmKit): suenan aunque cierres la app, reinicies el iPhone o esté en silencio o en Concentración.")
@@ -294,6 +296,35 @@ struct HomeView: View {
         Binding(
             get: { controller.state.settings.difficulty },
             set: { controller.setDifficulty($0) })
+    }
+
+    private var durationBinding: Binding<ChallengeDuration> {
+        Binding(
+            get: { controller.state.settings.challengeDuration },
+            set: { controller.setChallengeDuration($0) })
+    }
+}
+
+struct DurationPicker: View {
+    @Binding var selection: ChallengeDuration
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Duración del reto", systemImage: "timer")
+                .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+            Picker("Duración del reto", selection: $selection) {
+                ForEach(ChallengeDuration.allCases) { duration in
+                    Text(duration.title).tag(duration)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Minutos respondiendo bien: el tiempo solo corre mientras aciertas.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

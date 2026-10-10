@@ -31,11 +31,12 @@ struct AlarmSettings: Equatable {
         Dictionary(uniqueKeysWithValues: weekdays.map { ($0, time(on: $0)) })
     }
     var difficulty = ChallengeDifficulty.twoDigits
+    var challengeDuration = ChallengeDuration.oneMinute
 }
 
 extension AlarmSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes, difficulty
+        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes, difficulty, challengeDuration
     }
 
     // Every key is optional so that settings saved by older versions keep loading.
@@ -50,6 +51,7 @@ extension AlarmSettings: Codable {
         dayTimes = try container.decodeIfPresent([Int: AlarmTime].self, forKey: .dayTimes) ?? dayTimes
         // An unknown level (saved by a newer version) must not lose the alarm.
         difficulty = (try? container.decodeIfPresent(ChallengeDifficulty.self, forKey: .difficulty)) ?? difficulty
+        challengeDuration = (try? container.decodeIfPresent(ChallengeDuration.self, forKey: .challengeDuration)) ?? challengeDuration
     }
 }
 

@@ -5,7 +5,7 @@ Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de 
 - ⏰ **La misma hora todos los días o una distinta para cada día** (por ejemplo, 6:30 entre semana y 9:00 el fin de semana).
 - 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 90 sonidos sintetizados desde cero, todos diferentes entre sí, y no se repite ninguno hasta haberlos usado todos (unos tres meses).
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
-- 🧠 **Para apagarla de verdad hay que hacer 1 minuto de cálculo mental.** El tiempo solo avanza mientras respondes bien. Tú eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
+- 🧠 **Para apagarla de verdad hay que hacer cálculo mental durante 1, 2 o 3 minutos** (tú eliges). El tiempo solo avanza mientras respondes bien. También eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
 - 🌙 **¿Ya despertaste antes?** Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez.
 - 📈 **Estadísticas de tus despertares:** a qué hora sonó la alarma, a qué hora la apagaste y cuánto tardaste, con promedio, percentiles y gráficas de cómo han cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
 
@@ -20,7 +20,7 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 | Usar AlarmKit | ✅ Sí | Las alarmas las programa iOS con `AlarmManager`: suenan con el iPhone en silencio, en Concentración, con la app cerrada y después de reiniciar. |
 | Sonido diferente cada día | ✅ Sí | 90 sonidos propios en rotación barajada. Nunca suena el mismo dos días seguidos. |
 | Sin posponer, ni cerrando la app | ✅ Sí, con un matiz | iOS **siempre** muestra un control para detener la alarma y los botones físicos también la detienen; ninguna app puede quitar eso. Vigilia lo resuelve haciendo que la alarma **vuelva a sonar** (cada minuto y luego más espaciado, durante una hora) hasta que completes el reto. Esas repeticiones ya están programadas en iOS, así que cerrar o matar la app no las detiene. |
-| Apagarla con un ejercicio mental de 1 minuto | ✅ Sí | 60 s de cálculo mental; el reloj se pausa si dejas de responder y cada error resta 5 s. |
+| Apagarla con un ejercicio mental de 1 minuto | ✅ Sí | 1 minuto de cálculo mental (o 2 o 3, si lo eliges); el reloj se pausa si dejas de responder y cada error resta 5 s. |
 | Compilar sin Xcode | ⚠️ Parcial | **GitHub Actions: sí, sin Mac y sin Xcode de tu lado.** **Local:** necesitas una Mac con Xcode *instalado* (nunca lo abres y no hay `.xcodeproj`). Sin Xcode instalado no es posible: el SDK de iOS solo viene dentro de Xcode. |
 | Instalarla sin la suscripción de desarrollador | ⚠️ Sí, con límites | Con tu Apple ID **gratuito** y Sideloadly, AltStore o SideStore. La firma dura **7 días** (hay que renovarla), máximo 3 apps instaladas así y necesitas una computadora (Windows o Mac) al menos la primera vez. |
 
@@ -50,7 +50,7 @@ Son 90 y todos se sintetizan desde cero con [`scripts/generate_sounds.py`](scrip
 Para escucharlos sin compilar la app: `make sounds` los genera como WAV en `build/sounds/` (solo necesita Python 3).
 
 ### El reto
-- Operaciones aleatorias que se van complicando a lo largo del minuto: sumas, restas, multiplicaciones, sumas de tres números, series y combinaciones.
+- Operaciones aleatorias que se van complicando a lo largo del reto: sumas, restas, multiplicaciones, sumas de tres números, series y combinaciones.
 - **Dificultad** (en los ajustes de la alarma), según cuántos dígitos tienen los números:
 
   | Dificultad | Ejemplos |
@@ -59,13 +59,14 @@ Para escucharlos sin compilar la app: `make sounds` los genera como WAV en `buil
   | 2 dígitos (la de siempre) | `47 + 38`, `6 × 23`, `7 × 13 − 25` |
   | 3 dígitos | `347 + 285`, `6 × 135`, `7 × 124 − 358` |
 
-- Hay que acumular **60 segundos**. Después de cada respuesta correcta el reloj corre 15 s (25 s con 3 dígitos, que tardan más); si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
+- **Duración** (también en los ajustes de la alarma): hay que acumular **1, 2 o 3 minutos** (1 minuto es la de siempre). La duración solo cambia cuánto tiempo hay que acumular: las reglas son las mismas y las operaciones se van complicando a lo largo de todo el reto.
+- Después de cada respuesta correcta el reloj corre 15 s (25 s con 3 dígitos, que tardan más); si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
 - Un error resta 5 s; saltar una operación también.
 - Si te quedas ese mismo tiempo sin acertar (15 s, o 25 s con 3 dígitos), la alarma vuelve a sonar dentro de la app.
 - Si sales de la app el reto empieza de cero, y si la cierras, la alarma vuelve a sonar en poco más de un minuto.
 
 ### Desactivarla antes de que suene
-Si ya estás despierto, desde **3 horas antes** de la hora de la alarma aparece en **Próxima alarma** el botón **«Desactivarla con el reto de 1 minuto»**. Es el mismo reto que harías al sonar (misma dificultad y mismas reglas, aunque aquí lo puedes cancelar) y, al completarlo:
+Si ya estás despierto, desde **3 horas antes** de la hora de la alarma aparece en **Próxima alarma** el botón **«Desactivarla con el reto de 1 minuto»** (o de los minutos que hayas elegido). Es el mismo reto que harías al sonar (misma dificultad, misma duración y mismas reglas, aunque aquí lo puedes cancelar) y, al completarlo:
 - Esa alarma ya no suena ni vuelve a sonar: se cancelan también sus repeticiones.
 - **Solo se desactiva esa vez.** Las de los otros días siguen igual y ese mismo día de la semana vuelve a sonar la semana siguiente (mientras tanto la app muestra la alarma como «Desactivada»).
 - No cuenta en las estadísticas, porque no sonó.
@@ -76,9 +77,9 @@ No se puede usar mientras una alarma (o la prueba) está sonando o tiene el reto
 Por dentro: como una alarma semanal de AlarmKit no puede saltarse una semana, la de ese día se reemplaza por una alarma única para la semana siguiente; cuando ya pasó la hora desactivada, la app vuelve a ponerla semanal.
 
 ### Ajustes bloqueados
-Mientras la alarma está activada, **cambiar la hora, los días o la dificultad, o desactivarla, también exige el reto** (luego quedan desbloqueados 5 minutos). El reto para desbloquear usa la dificultad que ya tenías. Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora, los días y la dificultad antes de que se bloquee.
+Mientras la alarma está activada, **cambiar la hora, los días, la dificultad o la duración del reto, o desactivarla, también exige el reto** (luego quedan desbloqueados 5 minutos). El reto para desbloquear usa la dificultad y la duración que ya tenías. Así no puedes apagarla medio dormido desde los ajustes. Activarla es libre y, al hacerlo, tienes 5 minutos para ajustar la hora, los días, la dificultad y la duración antes de que se bloquee.
 
-**Mientras la alarma está sonando** (o ya sonó y el reto sigue pendiente, incluida la prueba), cualquier cambio de hora, días, dificultad o del interruptor **se ignora**, aunque los ajustes estén desbloqueados. Así cambiar la hora no puede silenciarla ni hacer que deje de volver: solo el reto la apaga.
+**Mientras la alarma está sonando** (o ya sonó y el reto sigue pendiente, incluida la prueba), cualquier cambio de hora, días, dificultad, duración del reto o del interruptor **se ignora**, aunque los ajustes estén desbloqueados. Así cambiar la hora no puede silenciarla ni hacer que deje de volver: solo el reto la apaga.
 
 ### Estadísticas
 En **Estadísticas** (pantalla principal) eliges tres cosas, independientes entre sí, y cualquier combinación funciona:
@@ -210,7 +211,7 @@ Con un **Apple ID gratuito** puedes firmar apps para tus propios dispositivos. L
 | Días y hora (la misma o una por día) | En la app |
 | Bundle ID, versión | `BUNDLE_ID=… VERSION=… make build` |
 | Repeticiones, duración de la sesión, desbloqueo, cuánto antes se puede desactivar | `AlarmRules` en [`src/Core/AlarmMath.swift`](src/Core/AlarmMath.swift) |
-| Duración del reto, penalizaciones | `ChallengeRules` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
+| Penalizaciones, tiempo por respuesta, duraciones posibles del reto | `ChallengeRules` y `ChallengeDuration` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
 | Tipos de operaciones de cada dificultad | `ProblemFactory` en [`src/Core/MathChallenge.swift`](src/Core/MathChallenge.swift) |
 | Estadísticas | [`src/Core/WakeStatistics.swift`](src/Core/WakeStatistics.swift) |
 | Sonidos | Lista `SOUNDS` en [`scripts/generate_sounds.py`](scripts/generate_sounds.py) (cada uno debe durar menos de 30 s) |

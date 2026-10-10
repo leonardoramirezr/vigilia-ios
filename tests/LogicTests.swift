@@ -182,6 +182,29 @@ struct LogicTests {
         }
         expect(ChallengeRules(difficulty: .threeDigits).graceSeconds > ChallengeRules().graceSeconds,
                "three-digit operations get more time per answer")
+
+        expect(ChallengeRules().requiredSeconds == 60, "one minute by default")
+        for duration in ChallengeDuration.allCases {
+            let rules = ChallengeRules(difficulty: .oneDigit, duration: duration)
+            expect(rules.requiredSeconds == duration.seconds && rules.graceSeconds == 15,
+                   "\(duration.title) only changes how long it lasts")
+            var long = ChallengeState(rules: rules, now: start, seed: 11)
+            var clock = start
+            var count = 0
+            var levels = Set<Int>()
+            while !long.isComplete && count < 200 {
+                levels.insert(long.problem.prompt.filter { $0 == "×" || $0 == "+" || $0 == "−" }.count)
+                _ = long.submit(String(long.problem.answer), now: clock)
+                clock = clock.addingTimeInterval(5)
+                long.tick(now: clock)
+                count += 1
+            }
+            // The first answer only starts the clock; then each one adds 5 s.
+            expect(long.isComplete && count == duration.rawValue * 12,
+                   "\(duration.title) answering every 5 s takes \(duration.rawValue * 12) answers (took \(count))")
+            expect(levels.min() == 1 && levels.max()! >= 2, "\(duration.title) operations still get harder along the way")
+        }
+        expect(ChallengeDuration.oneMinute.text == "1 minuto" && ChallengeDuration.threeMinutes.text == "3 minutos", "duration texts")
     }
 
     static func schedule(_ weekdays: Set<Int>, _ hour: Int, _ minute: Int) -> [Int: AlarmTime] {
@@ -419,6 +442,14 @@ struct LogicTests {
         let future = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2],"difficulty":9}}"#.utf8)
         expect((try? JSONDecoder().decode(VigiliaState.self, from: future))?.settings.isEnabled == true,
                "an unknown difficulty does not lose the alarm")
+        expect(old?.settings.challengeDuration == .oneMinute, "settings saved before the duration existed last 1 minute")
+        let unknownDuration = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2],"challengeDuration":9}}"#.utf8)
+        let decodedDuration = try? JSONDecoder().decode(VigiliaState.self, from: unknownDuration)
+        expect(decodedDuration?.settings.isEnabled == true && decodedDuration?.settings.challengeDuration == .oneMinute,
+               "an unknown duration does not lose the alarm")
+        var longer = state
+        longer.settings.challengeDuration = .threeMinutes
+        expect(try! JSONDecoder().decode(VigiliaState.self, from: JSONEncoder().encode(longer)) == longer, "the duration is saved")
     }
 
     static func testHistory() {

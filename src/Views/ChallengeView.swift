@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// One minute of mental arithmetic. It is the only way to turn the alarm off (also
+/// One to three minutes of mental arithmetic. It is the only way to turn the alarm off (also
 /// in advance, before it rings) or to unlock the settings while the alarm is enabled.
 struct ChallengeView: View {
     let request: ChallengeRequest
@@ -100,7 +100,7 @@ struct ChallengeView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                Text("1 minuto de cálculo mental, operaciones de \(request.difficulty.title). El tiempo solo corre mientras respondes bien.")
+                Text("\(request.duration.text) de cálculo mental, operaciones de \(request.difficulty.title). El tiempo solo corre mientras respondes bien.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -220,7 +220,7 @@ struct ChallengeView: View {
     }
 
     private static func newChallenge(for request: ChallengeRequest) -> ChallengeState {
-        ChallengeState(rules: ChallengeRules(difficulty: request.difficulty), now: Date(), seed: UInt64.random(in: .min ... .max))
+        ChallengeState(rules: request.rules, now: Date(), seed: UInt64.random(in: .min ... .max))
     }
 
     private func tick(at date: Date) {

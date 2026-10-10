@@ -19,6 +19,19 @@ struct ChallengeRequest: Identifiable, Equatable {
     let id = UUID()
     let purpose: Purpose
     let difficulty: ChallengeDifficulty
+    let duration: ChallengeDuration
+
+    /// Every challenge (waking up, turning the alarm off in advance, unlocking) uses
+    /// the difficulty and duration already chosen.
+    init(purpose: Purpose, settings: AlarmSettings) {
+        self.purpose = purpose
+        difficulty = settings.difficulty
+        duration = settings.challengeDuration
+    }
+
+    var rules: ChallengeRules {
+        ChallengeRules(difficulty: difficulty, duration: duration)
+    }
 }
 
 struct ChallengeSummary {
@@ -160,7 +173,7 @@ final class AlarmController: ObservableObject {
         }
         challenge = ChallengeRequest(
             purpose: .wake(occurrence: session.occurrence, isTest: session.isTest),
-            difficulty: state.settings.difficulty)
+            settings: state.settings)
     }
 
     // MARK: - Settings
@@ -188,18 +201,29 @@ final class AlarmController: ObservableObject {
         applySettings(change)
     }
 
+    func setDifficulty(_ difficulty: ChallengeDifficulty) {
+        changeChallenge { $0.difficulty = difficulty }
+    }
+
+    func setChallengeDuration(_ duration: ChallengeDuration) {
+        changeChallenge { $0.challengeDuration = duration }
+    }
+
     /// Only the challenge changes, so the alarms in AlarmKit stay as they are. Like
     /// any other setting it can't change while an alarm rings.
-    func setDifficulty(_ difficulty: ChallengeDifficulty) {
+    private func changeChallenge(_ change: (inout AlarmSettings) -> Void) {
         now = Date()
         refreshAlerting()
-        guard !isSettingsLocked, !isAlarmRinging, state.settings.difficulty != difficulty else { return }
-        state.settings.difficulty = difficulty
+        guard !isSettingsLocked, !isAlarmRinging else { return }
+        var updated = state.settings
+        change(&updated)
+        guard updated != state.settings else { return }
+        state.settings = updated
         save()
     }
 
     func requestUnlock() {
-        challenge = ChallengeRequest(purpose: .unlockSettings, difficulty: state.settings.difficulty)
+        challenge = ChallengeRequest(purpose: .unlockSettings, settings: state.settings)
     }
 
     /// The same challenge as in the morning, done before the alarm rings, so it doesn't.
@@ -207,7 +231,7 @@ final class AlarmController: ObservableObject {
         now = Date()
         refreshAlerting()
         guard let occurrence = earlyDismissibleOccurrence else { return }
-        challenge = ChallengeRequest(purpose: .dismissInAdvance(occurrence: occurrence), difficulty: state.settings.difficulty)
+        challenge = ChallengeRequest(purpose: .dismissInAdvance(occurrence: occurrence), settings: state.settings)
     }
 
     /// Ignored while an alarm rings (see `VigiliaState.changeSettings`): only the
