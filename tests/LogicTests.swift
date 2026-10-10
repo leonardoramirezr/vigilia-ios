@@ -204,6 +204,7 @@ struct LogicTests {
                    "\(duration.title) answering every 5 s takes \(duration.rawValue * 12) answers (took \(count))")
             expect(levels.min() == 1 && levels.max()! >= 2, "\(duration.title) operations still get harder along the way")
         }
+        expect(ChallengeDuration.allCases.map(\.rawValue) == Array(1...10), "from 1 to 10 minutes")
         expect(ChallengeDuration.oneMinute.text == "1 minuto" && ChallengeDuration.threeMinutes.text == "3 minutos", "duration texts")
     }
 
@@ -443,7 +444,7 @@ struct LogicTests {
         expect((try? JSONDecoder().decode(VigiliaState.self, from: future))?.settings.isEnabled == true,
                "an unknown difficulty does not lose the alarm")
         expect(old?.settings.challengeDuration == .oneMinute, "settings saved before the duration existed last 1 minute")
-        let unknownDuration = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2],"challengeDuration":9}}"#.utf8)
+        let unknownDuration = Data(#"{"settings":{"isEnabled":true,"hour":6,"minute":30,"weekdays":[2],"challengeDuration":99}}"#.utf8)
         let decodedDuration = try? JSONDecoder().decode(VigiliaState.self, from: unknownDuration)
         expect(decodedDuration?.settings.isEnabled == true && decodedDuration?.settings.challengeDuration == .oneMinute,
                "an unknown duration does not lose the alarm")

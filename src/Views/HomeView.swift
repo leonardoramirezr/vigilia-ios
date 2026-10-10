@@ -215,7 +215,7 @@ struct HomeView: View {
                     Text("• Cada día suena un sonido distinto para que no te acostumbres.")
                     Text("• No existe posponer. Si la detienes desde la pantalla bloqueada o con los botones, vuelve a sonar cada minuto y luego más espaciado durante una hora.")
                     Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz el reto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
-                    Text("• Eliges la dificultad del reto (operaciones con números de 1, 2 o 3 dígitos) y cuánto dura: 1, 2 o 3 minutos.")
+                    Text("• Eliges la dificultad del reto (operaciones con números de 1, 2 o 3 dígitos) y cuánto dura: de 1 a 10 minutos.")
                     Text("• Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez; las siguientes suenan como siempre.")
                     Text("• Si sales de la app durante el reto, empieza de nuevo; si la cierras, la alarma vuelve a sonar en poco más de un minuto.")
                     Text("• Las alarmas viven en iOS (AlarmKit): suenan aunque cierres la app, reinicies el iPhone o esté en silencio o en Concentración.")
@@ -310,16 +310,17 @@ struct DurationPicker: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
+        // Ten options don't fit in a segmented control, so a menu.
         VStack(alignment: .leading, spacing: 8) {
-            Label("Duración del reto", systemImage: "timer")
-                .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
-            Picker("Duración del reto", selection: $selection) {
+            Picker(selection: $selection) {
                 ForEach(ChallengeDuration.allCases) { duration in
                     Text(duration.title).tag(duration)
                 }
+            } label: {
+                Label("Duración del reto", systemImage: "timer")
+                    .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .pickerStyle(.menu)
             Text("Minutos respondiendo bien: el tiempo solo corre mientras aciertas.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)

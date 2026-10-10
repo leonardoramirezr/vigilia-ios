@@ -5,7 +5,7 @@ Alarma para iPhone (iOS 26 o posterior) hecha con **AlarmKit**, el framework de 
 - ⏰ **La misma hora todos los días o una distinta para cada día** (por ejemplo, 6:30 entre semana y 9:00 el fin de semana).
 - 🔊 **Cada día suena un sonido distinto** para que no te acostumbres: hay 90 sonidos sintetizados desde cero, todos diferentes entre sí, y no se repite ninguno hasta haberlos usado todos (unos tres meses).
 - 🚫 **No se puede posponer.** La alarma no tiene botón de posponer, y si la detienes desde la pantalla bloqueada, con los botones físicos o cerrando la app, **vuelve a sonar**.
-- 🧠 **Para apagarla de verdad hay que hacer cálculo mental durante 1, 2 o 3 minutos** (tú eliges). El tiempo solo avanza mientras respondes bien. También eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
+- 🧠 **Para apagarla de verdad hay que hacer cálculo mental de 1 a 10 minutos** (tú eliges). El tiempo solo avanza mientras respondes bien. También eliges la dificultad: operaciones con números de 1, 2 o 3 dígitos.
 - 🌙 **¿Ya despertaste antes?** Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez.
 - 📈 **Estadísticas de tus despertares:** a qué hora sonó la alarma, a qué hora la apagaste y cuánto tardaste, con promedio, percentiles y gráficas de cómo han cambiado, por día de la semana o de toda la semana, contando siempre, el último año, mes o semana.
 
@@ -20,7 +20,7 @@ Se compila **sin proyecto de Xcode** (solo `swiftc`, un `Makefile` y `build.sh`,
 | Usar AlarmKit | ✅ Sí | Las alarmas las programa iOS con `AlarmManager`: suenan con el iPhone en silencio, en Concentración, con la app cerrada y después de reiniciar. |
 | Sonido diferente cada día | ✅ Sí | 90 sonidos propios en rotación barajada. Nunca suena el mismo dos días seguidos. |
 | Sin posponer, ni cerrando la app | ✅ Sí, con un matiz | iOS **siempre** muestra un control para detener la alarma y los botones físicos también la detienen; ninguna app puede quitar eso. Vigilia lo resuelve haciendo que la alarma **vuelva a sonar** (cada minuto y luego más espaciado, durante una hora) hasta que completes el reto. Esas repeticiones ya están programadas en iOS, así que cerrar o matar la app no las detiene. |
-| Apagarla con un ejercicio mental de 1 minuto | ✅ Sí | 1 minuto de cálculo mental (o 2 o 3, si lo eliges); el reloj se pausa si dejas de responder y cada error resta 5 s. |
+| Apagarla con un ejercicio mental de 1 minuto | ✅ Sí | 1 minuto de cálculo mental (o hasta 10, si lo eliges); el reloj se pausa si dejas de responder y cada error resta 5 s. |
 | Compilar sin Xcode | ⚠️ Parcial | **GitHub Actions: sí, sin Mac y sin Xcode de tu lado.** **Local:** necesitas una Mac con Xcode *instalado* (nunca lo abres y no hay `.xcodeproj`). Sin Xcode instalado no es posible: el SDK de iOS solo viene dentro de Xcode. |
 | Instalarla sin la suscripción de desarrollador | ⚠️ Sí, con límites | Con tu Apple ID **gratuito** y Sideloadly, AltStore o SideStore. La firma dura **7 días** (hay que renovarla), máximo 3 apps instaladas así y necesitas una computadora (Windows o Mac) al menos la primera vez. |
 
@@ -59,7 +59,7 @@ Para escucharlos sin compilar la app: `make sounds` los genera como WAV en `buil
   | 2 dígitos (la de siempre) | `47 + 38`, `6 × 23`, `7 × 13 − 25` |
   | 3 dígitos | `347 + 285`, `6 × 135`, `7 × 124 − 358` |
 
-- **Duración** (también en los ajustes de la alarma): hay que acumular **1, 2 o 3 minutos** (1 minuto es la de siempre). La duración solo cambia cuánto tiempo hay que acumular: las reglas son las mismas y las operaciones se van complicando a lo largo de todo el reto.
+- **Duración** (también en los ajustes de la alarma): hay que acumular **de 1 a 10 minutos** (1 minuto es la de siempre). La duración solo cambia cuánto tiempo hay que acumular: las reglas son las mismas y las operaciones se van complicando a lo largo de todo el reto.
 - Después de cada respuesta correcta el reloj corre 15 s (25 s con 3 dígitos, que tardan más); si no vuelves a acertar en ese tiempo se pausa. No se puede completar esperando.
 - Un error resta 5 s; saltar una operación también.
 - Si te quedas ese mismo tiempo sin acertar (15 s, o 25 s con 3 dígitos), la alarma vuelve a sonar dentro de la app.

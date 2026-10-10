@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// One to three minutes of mental arithmetic. It is the only way to turn the alarm off (also
+/// One to ten minutes of mental arithmetic. It is the only way to turn the alarm off (also
 /// in advance, before it rings) or to unlock the settings while the alarm is enabled.
 struct ChallengeView: View {
     let request: ChallengeRequest

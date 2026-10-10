@@ -36,6 +36,13 @@ enum ChallengeDuration: Int, Codable, CaseIterable, Identifiable {
     case oneMinute = 1
     case twoMinutes = 2
     case threeMinutes = 3
+    case fourMinutes = 4
+    case fiveMinutes = 5
+    case sixMinutes = 6
+    case sevenMinutes = 7
+    case eightMinutes = 8
+    case nineMinutes = 9
+    case tenMinutes = 10
 
     var id: Int { rawValue }
 
@@ -185,7 +192,7 @@ struct ChallengeRules: Equatable {
     }
 }
 
-/// One to three minutes of mental arithmetic. The clock only advances while the
+/// One to ten minutes of mental arithmetic. The clock only advances while the
 /// person keeps answering correctly, so it cannot be completed by waiting. Operations
 /// get harder as the clock advances, whatever the duration.
 struct ChallengeState {
