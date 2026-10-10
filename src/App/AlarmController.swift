@@ -12,11 +12,26 @@ struct ChallengeRequest: Identifiable, Equatable {
     enum Purpose: Equatable {
         case wake(occurrence: Date, isTest: Bool)
         case unlockSettings
+        /// Turns off an alarm that is about to ring by doing its challenge in advance.
+        case dismissInAdvance(occurrence: Date)
     }
 
     let id = UUID()
     let purpose: Purpose
     let difficulty: ChallengeDifficulty
+    let duration: ChallengeDuration
+
+    /// Every challenge (waking up, turning the alarm off in advance, unlocking) uses
+    /// the difficulty and duration already chosen.
+    init(purpose: Purpose, settings: AlarmSettings) {
+        self.purpose = purpose
+        difficulty = settings.difficulty
+        duration = settings.challengeDuration
+    }
+
+    var rules: ChallengeRules {
+        ChallengeRules(difficulty: difficulty, duration: duration)
+    }
 }
 
 struct ChallengeSummary {
@@ -94,6 +109,17 @@ final class AlarmController: ObservableObject {
         nextOccurrence(after: now)
     }
 
+    /// The next alarm, while it can be turned off in advance (up to 3 hours before).
+    var earlyDismissibleOccurrence: Date? {
+        guard !hasAlertingAlarm else { return nil }
+        return state.earlyDismissibleOccurrence(at: now, calendar: calendar)
+    }
+
+    /// An upcoming alarm that was already turned off in advance.
+    var dismissedOccurrence: Date? {
+        state.dismissedOccurrence(after: now, calendar: calendar)
+    }
+
     func soundInfo(for date: Date) -> SoundInfo? {
         sounds.sound(for: date, timeZone: calendar.timeZone)
     }
@@ -147,7 +173,7 @@ final class AlarmController: ObservableObject {
         }
         challenge = ChallengeRequest(
             purpose: .wake(occurrence: session.occurrence, isTest: session.isTest),
-            difficulty: state.settings.difficulty)
+            settings: state.settings)
     }
 
     // MARK: - Settings
@@ -175,18 +201,37 @@ final class AlarmController: ObservableObject {
         applySettings(change)
     }
 
+    func setDifficulty(_ difficulty: ChallengeDifficulty) {
+        changeChallenge { $0.difficulty = difficulty }
+    }
+
+    func setChallengeDuration(_ duration: ChallengeDuration) {
+        changeChallenge { $0.challengeDuration = duration }
+    }
+
     /// Only the challenge changes, so the alarms in AlarmKit stay as they are. Like
     /// any other setting it can't change while an alarm rings.
-    func setDifficulty(_ difficulty: ChallengeDifficulty) {
+    private func changeChallenge(_ change: (inout AlarmSettings) -> Void) {
         now = Date()
         refreshAlerting()
-        guard !isSettingsLocked, !isAlarmRinging, state.settings.difficulty != difficulty else { return }
-        state.settings.difficulty = difficulty
+        guard !isSettingsLocked, !isAlarmRinging else { return }
+        var updated = state.settings
+        change(&updated)
+        guard updated != state.settings else { return }
+        state.settings = updated
         save()
     }
 
     func requestUnlock() {
-        challenge = ChallengeRequest(purpose: .unlockSettings, difficulty: state.settings.difficulty)
+        challenge = ChallengeRequest(purpose: .unlockSettings, settings: state.settings)
+    }
+
+    /// The same challenge as in the morning, done before the alarm rings, so it doesn't.
+    func requestEarlyDismissal() {
+        now = Date()
+        refreshAlerting()
+        guard let occurrence = earlyDismissibleOccurrence else { return }
+        challenge = ChallengeRequest(purpose: .dismissInAdvance(occurrence: occurrence), settings: state.settings)
     }
 
     /// Ignored while an alarm rings (see `VigiliaState.changeSettings`): only the
@@ -322,6 +367,16 @@ final class AlarmController: ObservableObject {
             state.settingsUnlockedUntil = now.addingTimeInterval(AlarmRules.settingsUnlockDuration)
             self.now = now
             save()
+        case .dismissInAdvance(let occurrence):
+            // Only that occurrence: its weekday rings again next week. It never rang,
+            // so it is not a wake-up for the statistics.
+            state.markCompleted(occurrence)
+            self.now = now
+            save()
+            enqueue {
+                self.cancelRetries { $0.occurrence.isSameInstant(as: occurrence) }
+                await self.reconcile()
+            }
         case .wake(let occurrence, let isTest):
             state.markCompleted(occurrence)
             state.recordWake(
@@ -434,13 +489,14 @@ final class AlarmController: ObservableObject {
     }
 
     private func reconcileMainAlarms(live: [UUID: Alarm], now: Date) async {
-        let times = state.settings.isEnabled ? state.settings.schedule : [:]
+        let plans = state.mainAlarmPlans(after: now, calendar: calendar)
         var kept: [MainAlarmRecord] = []
         var covered = Set<Int>()
 
         for record in state.mains {
             guard let alarm = live[record.id] else { continue }
-            let matches = times[record.weekday] == AlarmTime(hour: record.hour, minute: record.minute)
+            let plan = plans[record.weekday]
+            let matches = plan?.time == AlarmTime(hour: record.hour, minute: record.minute)
                 && !covered.contains(record.weekday)
             if alarm.state == .alerting {
                 // Never interrupt an alarm that is ringing; it is revisited next time.
@@ -448,10 +504,20 @@ final class AlarmController: ObservableObject {
                 if matches { covered.insert(record.weekday) }
                 continue
             }
-            if matches, let next = AlarmMath.nextOccurrence(
-                weekday: record.weekday, hour: record.hour, minute: record.minute, after: now, calendar: calendar) {
+            if matches, let plan {
+                let next = plan.fireDate
                 // Swapping the alarm right before it fires could lose it, so keep it then.
-                if soundInfo(for: next)?.file == record.sound || next.timeIntervalSince(now) < 120 {
+                let firesSoon = next.timeIntervalSince(now) < 120
+                let keep: Bool
+                if record.isOneShot == true {
+                    // Stands in for the weekly alarm after an occurrence turned off in
+                    // advance; once that occurrence has passed, the weekly one returns.
+                    keep = record.nextFire.isSameInstant(as: next) && (plan.isOneShot || firesSoon)
+                } else {
+                    // A weekly alarm would still ring on the occurrence turned off in advance.
+                    keep = !plan.isOneShot && (soundInfo(for: next)?.file == record.sound || firesSoon)
+                }
+                if keep {
                     var updated = record
                     updated.nextFire = next
                     kept.append(updated)
@@ -462,17 +528,23 @@ final class AlarmController: ObservableObject {
             try? manager.cancel(id: record.id)
         }
 
-        for (weekday, time) in times.sorted(by: { $0.key < $1.key }) where !covered.contains(weekday) {
-            guard let next = AlarmMath.nextOccurrence(
-                weekday: weekday, hour: time.hour, minute: time.minute, after: now, calendar: calendar) else { continue }
-            let sound = soundInfo(for: next)?.file
-            let schedule = Alarm.Schedule.relative(.init(
-                time: .init(hour: time.hour, minute: time.minute),
-                repeats: .weekly([Self.localeWeekday(weekday)])))
+        for plan in plans.values.sorted(by: { $0.weekday < $1.weekday }) where !covered.contains(plan.weekday) {
+            let time = plan.time
+            let sound = soundInfo(for: plan.fireDate)?.file
+            let schedule: Alarm.Schedule
+            if plan.isOneShot {
+                schedule = .fixed(plan.fireDate)
+            } else {
+                schedule = .relative(.init(
+                    time: .init(hour: time.hour, minute: time.minute),
+                    repeats: .weekly([Self.localeWeekday(plan.weekday)])))
+            }
             let id = UUID()
             do {
                 try await scheduleAlarm(id: id, kind: .main, schedule: schedule, sound: sound)
-                kept.append(MainAlarmRecord(id: id, weekday: weekday, hour: time.hour, minute: time.minute, sound: sound, nextFire: next))
+                kept.append(MainAlarmRecord(
+                    id: id, weekday: plan.weekday, hour: time.hour, minute: time.minute, sound: sound,
+                    nextFire: plan.fireDate, isOneShot: plan.isOneShot))
             } catch {
                 report(error)
             }
@@ -561,10 +633,9 @@ final class AlarmController: ObservableObject {
         return task
     }
 
+    /// Skips occurrences turned off in advance.
     private func nextOccurrence(after date: Date) -> Date? {
-        let settings = state.settings
-        guard settings.isEnabled else { return nil }
-        return AlarmMath.nextOccurrence(schedule: settings.schedule, after: date, calendar: calendar)
+        state.nextOccurrence(after: date, calendar: calendar)
     }
 
     private func save() {

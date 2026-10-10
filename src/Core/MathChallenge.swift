@@ -31,6 +31,30 @@ enum ChallengeDifficulty: Int, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How much time the challenge has to accumulate (it only runs while answering well).
+enum ChallengeDuration: Int, Codable, CaseIterable, Identifiable {
+    case oneMinute = 1
+    case twoMinutes = 2
+    case threeMinutes = 3
+    case fourMinutes = 4
+    case fiveMinutes = 5
+    case sixMinutes = 6
+    case sevenMinutes = 7
+    case eightMinutes = 8
+    case nineMinutes = 9
+    case tenMinutes = 10
+
+    var id: Int { rawValue }
+
+    var seconds: TimeInterval { TimeInterval(rawValue * 60) }
+
+    /// Short label for the picker.
+    var title: String { "\(rawValue) min" }
+
+    /// For sentences: "1 minuto", "2 minutos".
+    var text: String { rawValue == 1 ? "1 minuto" : "\(rawValue) minutos" }
+}
+
 enum ProblemFactory {
     /// Levels 0…4. Higher levels mix more operations; the difficulty sets how many
     /// digits the numbers have. Every answer is a non-negative integer so a plain
@@ -159,16 +183,18 @@ struct ChallengeRules: Equatable {
     var wrongPenalty: TimeInterval = 5
     var skipPenalty: TimeInterval = 5
 
-    init(difficulty: ChallengeDifficulty = .twoDigits) {
+    init(difficulty: ChallengeDifficulty = .twoDigits, duration: ChallengeDuration = .oneMinute) {
         self.difficulty = difficulty
+        requiredSeconds = duration.seconds
         // Three-digit operations take longer to work out, and the alarm comes back
         // inside the app once this much time passes without a correct answer.
         graceSeconds = difficulty == .threeDigits ? 25 : 15
     }
 }
 
-/// One minute of mental arithmetic. The clock only advances while the person keeps
-/// answering correctly, so it cannot be completed by waiting.
+/// One to ten minutes of mental arithmetic. The clock only advances while the
+/// person keeps answering correctly, so it cannot be completed by waiting. Operations
+/// get harder as the clock advances, whatever the duration.
 struct ChallengeState {
     enum Outcome: Equatable {
         case correct, wrong, invalid, finished

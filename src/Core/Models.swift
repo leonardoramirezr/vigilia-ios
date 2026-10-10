@@ -31,11 +31,12 @@ struct AlarmSettings: Equatable {
         Dictionary(uniqueKeysWithValues: weekdays.map { ($0, time(on: $0)) })
     }
     var difficulty = ChallengeDifficulty.twoDigits
+    var challengeDuration = ChallengeDuration.oneMinute
 }
 
 extension AlarmSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes, difficulty
+        case isEnabled, hour, minute, weekdays, sameTimeEveryDay, dayTimes, difficulty, challengeDuration
     }
 
     // Every key is optional so that settings saved by older versions keep loading.
@@ -50,6 +51,7 @@ extension AlarmSettings: Codable {
         dayTimes = try container.decodeIfPresent([Int: AlarmTime].self, forKey: .dayTimes) ?? dayTimes
         // An unknown level (saved by a newer version) must not lose the alarm.
         difficulty = (try? container.decodeIfPresent(ChallengeDifficulty.self, forKey: .difficulty)) ?? difficulty
+        challengeDuration = (try? container.decodeIfPresent(ChallengeDuration.self, forKey: .challengeDuration)) ?? challengeDuration
     }
 }
 
@@ -62,6 +64,22 @@ struct MainAlarmRecord: Codable, Equatable {
     var minute: Int
     var sound: String?
     var nextFire: Date
+    /// A one-shot alarm at `nextFire` instead of the weekly one, because the
+    /// occurrence before it was turned off in advance (see `MainAlarmPlan`).
+    var isOneShot: Bool?
+}
+
+/// What the alarm of one weekday must look like in AlarmKit.
+struct MainAlarmPlan: Equatable {
+    var weekday: Int
+    var time: AlarmTime
+    /// The next time it rings.
+    var fireDate: Date
+    /// The occurrence turned off in advance, if any. A weekly alarm can't skip one
+    /// week, so until it passes a one-shot alarm at `fireDate` stands in for it.
+    var skipped: Date?
+
+    var isOneShot: Bool { skipped != nil }
 }
 
 /// A one-shot alarm that rings again if the challenge has not been completed.
@@ -151,6 +169,45 @@ struct VigiliaState: Equatable {
         settings = updated
         armedSince = now
         return true
+    }
+
+    /// The next ring of every selected weekday. An occurrence that was turned off in
+    /// advance (completed before it rang) is skipped: that weekday rings a week later.
+    func mainAlarmPlans(after now: Date, calendar: Calendar) -> [Int: MainAlarmPlan] {
+        guard settings.isEnabled else { return [:] }
+        var plans: [Int: MainAlarmPlan] = [:]
+        for (weekday, time) in settings.schedule {
+            guard let next = AlarmMath.nextOccurrence(
+                weekday: weekday, hour: time.hour, minute: time.minute, after: now, calendar: calendar) else { continue }
+            if isCompleted(next) {
+                guard let following = AlarmMath.nextOccurrence(
+                    weekday: weekday, hour: time.hour, minute: time.minute, after: next, calendar: calendar) else { continue }
+                plans[weekday] = MainAlarmPlan(weekday: weekday, time: time, fireDate: following, skipped: next)
+            } else {
+                plans[weekday] = MainAlarmPlan(weekday: weekday, time: time, fireDate: next)
+            }
+        }
+        return plans
+    }
+
+    /// The next time the alarm will actually ring.
+    func nextOccurrence(after now: Date, calendar: Calendar) -> Date? {
+        mainAlarmPlans(after: now, calendar: calendar).values.map(\.fireDate).min()
+    }
+
+    /// The next upcoming occurrence that was turned off in advance.
+    func dismissedOccurrence(after now: Date, calendar: Calendar) -> Date? {
+        mainAlarmPlans(after: now, calendar: calendar).values.compactMap(\.skipped).min()
+    }
+
+    /// The next alarm, when it is close enough to turn it off in advance by doing its
+    /// challenge now. Never while an alarm (or the test) still waits for its challenge.
+    func earlyDismissibleOccurrence(at now: Date, calendar: Calendar) -> Date? {
+        guard activeSession(at: now, calendar: calendar) == nil,
+              let next = nextOccurrence(after: now, calendar: calendar) else { return nil }
+        let remaining = next.timeIntervalSince(now)
+        guard remaining > AlarmRules.earlyTolerance, remaining <= AlarmRules.earlyDismissWindow else { return nil }
+        return next
     }
 
     func hasPendingRetry(for occurrence: Date, after now: Date) -> Bool {

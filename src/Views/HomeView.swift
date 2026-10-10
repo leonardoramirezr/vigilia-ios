@@ -78,6 +78,8 @@ struct HomeView: View {
             }
             DifficultyPicker(selection: difficultyBinding)
                 .disabled(!isEditable)
+            DurationPicker(selection: durationBinding)
+                .disabled(!isEditable)
             if controller.isAlarmRinging {
                 Label("La alarma está sonando: no se puede cambiar hasta que completes el reto.", systemImage: "alarm.waves.left.and.right.fill")
                     .foregroundStyle(.orange)
@@ -85,7 +87,7 @@ struct HomeView: View {
                 Button {
                     controller.requestUnlock()
                 } label: {
-                    Label("Desbloquear con el reto de 1 minuto", systemImage: "lock.fill")
+                    Label("Desbloquear con el reto de \(settings.challengeDuration.text)", systemImage: "lock.fill")
                 }
             } else if controller.state.settings.isEnabled, let until = controller.state.settingsUnlockedUntil, until > controller.now {
                 Label("Desbloqueada hasta las \(until.formatted(date: .omitted, time: .shortened))", systemImage: "lock.open.fill")
@@ -113,14 +115,26 @@ struct HomeView: View {
                     LabeledContent("Sonido de ese día", value: sound.title)
                     previewButton(for: sound)
                 }
+                if controller.earlyDismissibleOccurrence != nil {
+                    Button {
+                        controller.requestEarlyDismissal()
+                    } label: {
+                        Label("Desactivarla con el reto de \(controller.state.settings.challengeDuration.text)", systemImage: "moon.zzz.fill")
+                    }
+                }
             } else {
                 Text("No hay ninguna alarma programada.")
                     .foregroundStyle(.secondary)
             }
+            if let dismissed = controller.dismissedOccurrence {
+                LabeledContent("Desactivada") {
+                    Text(dismissed.formatted(.dateTime.weekday(.wide).hour().minute()))
+                }
+            }
         } header: {
             Text("Próxima alarma")
         } footer: {
-            Text("Hay \(controller.sounds.sounds.count) sonidos y cada día suena uno distinto; no se repite ninguno hasta haberlos usado todos.")
+            Text("Desde 3 horas antes puedes desactivarla resolviendo el mismo reto que harías al sonar; solo se desactiva esa vez. Hay \(controller.sounds.sounds.count) sonidos y cada día suena uno distinto; no se repite ninguno hasta haberlos usado todos.")
         }
     }
 
@@ -200,8 +214,9 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("• Cada día suena un sonido distinto para que no te acostumbres.")
                     Text("• No existe posponer. Si la detienes desde la pantalla bloqueada o con los botones, vuelve a sonar cada minuto y luego más espaciado durante una hora.")
-                    Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz 1 minuto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
-                    Text("• Eliges la dificultad del reto: operaciones con números de 1, 2 o 3 dígitos.")
+                    Text("• Para apagarla de verdad abre Vigilia (botón «Resolver reto») y haz el reto de cálculo mental. El tiempo solo avanza mientras respondes bien y cada error resta 5 segundos.")
+                    Text("• Eliges la dificultad del reto (operaciones con números de 1, 2 o 3 dígitos) y cuánto dura: de 1 a 10 minutos.")
+                    Text("• Desde 3 horas antes de que suene puedes desactivar esa alarma haciendo el mismo reto desde la app. Solo se salta esa vez; las siguientes suenan como siempre.")
                     Text("• Si sales de la app durante el reto, empieza de nuevo; si la cierras, la alarma vuelve a sonar en poco más de un minuto.")
                     Text("• Las alarmas viven en iOS (AlarmKit): suenan aunque cierres la app, reinicies el iPhone o esté en silencio o en Concentración.")
                 }
@@ -281,6 +296,36 @@ struct HomeView: View {
         Binding(
             get: { controller.state.settings.difficulty },
             set: { controller.setDifficulty($0) })
+    }
+
+    private var durationBinding: Binding<ChallengeDuration> {
+        Binding(
+            get: { controller.state.settings.challengeDuration },
+            set: { controller.setChallengeDuration($0) })
+    }
+}
+
+struct DurationPicker: View {
+    @Binding var selection: ChallengeDuration
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        // Ten options don't fit in a segmented control, so a menu.
+        VStack(alignment: .leading, spacing: 8) {
+            Picker(selection: $selection) {
+                ForEach(ChallengeDuration.allCases) { duration in
+                    Text(duration.title).tag(duration)
+                }
+            } label: {
+                Label("Duración del reto", systemImage: "timer")
+                    .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+            }
+            .pickerStyle(.menu)
+            Text("Minutos respondiendo bien: el tiempo solo corre mientras aciertas.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 
